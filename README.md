@@ -6,11 +6,9 @@ team can reproduce a known working combination of projects.
 
 ## Prerequisites
 
-- Git
 - Flutter
 - Docker with Docker Compose
 - [uv](https://docs.astral.sh/uv/)
-- OpenSSL
 - VS Code (recommended for the included tasks)
 
 ## Clone
@@ -97,17 +95,3 @@ parent. Its terminal equivalent is:
 The `Purge` task deletes local Papyrus databases, uploaded media, PowerSync
 state, and browser storage before recreating clean service state. It requires
 typing `RESET` exactly. Stop the Client and Back-end tasks before running it.
-
-## Advance a project revision
-
-Submodule versions change intentionally. A maintainer updates the desired child
-repository, validates the complete workspace, and commits the resulting gitlink
-in this repository. For example:
-
-```bash
-git -C client pull --ff-only origin master
-git add client
-git commit -m "chore: update client"
-```
-
-Other developers receive that exact revision the next time they run `Pull`.
