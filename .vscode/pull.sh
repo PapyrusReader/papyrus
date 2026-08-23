@@ -8,7 +8,7 @@ if git -C "${workspace_root}" remote get-url origin >/dev/null 2>&1; then
   echo "Pulling workspace changes..."
   git -C "${workspace_root}" pull --ff-only
 else
-  echo "Workspace remote is not configured; skipping the workspace pull."
+  echo "Workspace remote is not configured."
 fi
 
 echo "Synchronizing workspace projects to their pinned revisions..."
