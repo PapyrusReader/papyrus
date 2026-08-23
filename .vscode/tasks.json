@@ -1,0 +1,97 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Setup workspace",
+      "type": "shell",
+      "command": "${workspaceFolder}/.vscode/setup.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "clear": true,
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Client",
+      "type": "shell",
+      "command": "flutter run -d chrome --web-hostname papyrus.localhost --web-port 3000 --dart-define-from-file=.dart_defines",
+      "options": {
+        "cwd": "${workspaceFolder}/client/app"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Back-end",
+      "type": "shell",
+      "command": "uv run uvicorn papyrus.main:app --reload --host 0.0.0.0 --port 8080",
+      "options": {
+        "cwd": "${workspaceFolder}/server"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Storage",
+      "type": "shell",
+      "command": "docker compose up database mailpit powersync-storage powersync",
+      "options": {
+        "cwd": "${workspaceFolder}/server"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Purge",
+      "type": "shell",
+      "command": "${workspaceFolder}/.vscode/purge.sh",
+      "args": [
+        "${input:confirmProjectDataReset}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "clear": true,
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Pull",
+      "type": "shell",
+      "command": "${workspaceFolder}/.vscode/pull.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "clear": true,
+        "reveal": "always"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "confirmProjectDataReset",
+      "type": "promptString",
+      "description": "Destructive: type RESET to delete all local Papyrus DB, media, PowerSync, OPFS, and browser state",
+      "default": ""
+    }
+  ]
+}

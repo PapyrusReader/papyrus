@@ -1,0 +1,15 @@
+[submodule "client"]
+	path = client
+	url = https://github.com/PapyrusReader/client.git
+[submodule "server"]
+	path = server
+	url = https://github.com/PapyrusReader/server.git
+[submodule "reader"]
+	path = reader
+	url = https://github.com/PapyrusReader/reader.git
+[submodule "website"]
+	path = website
+	url = https://github.com/PapyrusReader/website.git
+[submodule "docs"]
+	path = docs
+	url = https://github.com/PapyrusReader/docs.git
