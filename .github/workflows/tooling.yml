@@ -6,11 +6,17 @@ on:
       - 'tools/**'
       - '.vscode/setup.sh'
       - '.github/workflows/tooling.yml'
+      - 'client'
+      - 'reader'
+      - '.gitmodules'
   pull_request:
     paths:
       - 'tools/**'
       - '.vscode/setup.sh'
       - '.github/workflows/tooling.yml'
+      - 'client'
+      - 'reader'
+      - '.gitmodules'
   workflow_dispatch:
 
 permissions:
@@ -21,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -32,3 +40,5 @@ jobs:
         run: tools/papyrus check tooling
       - name: Check setup script
         run: shellcheck .vscode/setup.sh
+      - name: Check committed reader references
+        run: tools/papyrus check references

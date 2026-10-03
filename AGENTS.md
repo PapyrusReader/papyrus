@@ -27,8 +27,8 @@ Flutter is pinned in `.fvmrc` to the client CI version; use `tools/flutter` and
 `tools/dart` rather than the machine's potentially newer SDK.
 
 - `tools/papyrus doctor`: tools, SDK, local configuration, submodules, GitHub auth.
-- `tools/papyrus deps client|server`: locked dependency setup.
-- `tools/papyrus check client|server|tooling`: non-mutating quality checks.
+- `tools/papyrus deps client|reader|server|all`: locked dependency setup.
+- `tools/papyrus check client|reader|server|references|tooling|all`: non-mutating quality checks.
 - `tools/papyrus test client -- test/path_test.dart`: focused Flutter test.
 - `tools/papyrus test server -- tests/services/test_sync.py`: focused pytest run.
 - `tools/papyrus run client|server`: development processes.
@@ -60,4 +60,4 @@ contract decisions with both implementers and run database tests serially.
 Follow the existing design tokens and e-ink motion preferences. Library operations
 must work offline and remain isolated across guest, user, and server profiles.
 Treat stored reading positions and user media as durable data. See
-`DEVELOPMENT.md` for setup, measured baseline and known gaps.
+`DEVELOPMENT.md` for setup, checks and integration workflow.

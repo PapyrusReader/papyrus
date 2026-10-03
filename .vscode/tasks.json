@@ -185,6 +185,57 @@
         "panel": "dedicated",
         "reveal": "always"
       }
+    },
+    {
+      "label": "Check reader",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/papyrus",
+      "args": [
+        "check",
+        "reader"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Test reader",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/papyrus",
+      "args": [
+        "test",
+        "reader"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Check all",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/papyrus",
+      "args": [
+        "check",
+        "all"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
     }
   ],
   "inputs": [
