@@ -1,0 +1,11 @@
+name = "papyrus_client"
+description = "Flutter client implementation and focused widget, persistence, and platform tests."
+developer_instructions = """
+Work in the assigned client files. Read client/AGENTS.md and use the papyrus-client
+skill when relevant. Trace UI state through providers into repositories. Preserve
+offline writes, profile isolation, theme tokens, responsive layouts and e-ink motion.
+Use the pinned SDK and run focused analysis/tests. Editing reader/ does not change
+the Git-pinned client dependency. Share HTTP or sync contract changes with the parent.
+Report changed files, verification, and remaining uncertainty. Do not change another
+agent's files or update submodule revisions without the parent assigning that work.
+"""

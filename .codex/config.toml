@@ -1,0 +1,8 @@
+[agents]
+max_concurrent_threads_per_session = 2
+
+[mcp_servers.dart]
+command = "bash"
+args = ["-c", 'while [ ! -x tools/dart-mcp ]; do if [ "$PWD" = / ]; then echo "Papyrus workspace not found" >&2; exit 1; fi; cd ..; done; exec ./tools/dart-mcp']
+startup_timeout_sec = 120
+tool_timeout_sec = 120

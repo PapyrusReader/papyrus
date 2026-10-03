@@ -6,7 +6,7 @@ workspace_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 client_dir="${workspace_root}/client/app"
 server_dir="${workspace_root}/server"
 
-required_commands=(git flutter docker uv openssl)
+required_commands=(git docker uv openssl)
 
 for command_name in "${required_commands[@]}"; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
@@ -24,6 +24,9 @@ echo "Initializing workspace projects..."
 git -C "${workspace_root}" submodule sync --recursive
 git -C "${workspace_root}" submodule update --init --recursive
 
+echo "Preparing project Flutter SDK..."
+"${workspace_root}/tools/papyrus" sdk
+
 echo "Preparing client..."
 if [[ ! -f "${client_dir}/.dart_defines" ]]; then
   cp "${client_dir}/.dart_defines.example" "${client_dir}/.dart_defines"
@@ -32,7 +35,7 @@ fi
 
 (
   cd "${client_dir}"
-  flutter pub get
+  "${workspace_root}/tools/flutter" pub get --enforce-lockfile
 )
 
 echo "Preparing server..."
@@ -43,7 +46,7 @@ fi
 
 (
   cd "${server_dir}"
-  uv sync --extra dev
+  uv sync --locked --extra dev
 
   set -a
   # shellcheck disable=SC1091

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+workspace_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+sdk_command="${workspace_root}/.fvm/flutter_sdk/bin/flutter"
+if [[ ! -x "${sdk_command}" ]]; then
+  echo "Project Flutter SDK is missing. Run: tools/papyrus sdk" >&2
+  exit 1
+fi
+exec "${sdk_command}" "$@"

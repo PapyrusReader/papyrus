@@ -18,7 +18,7 @@
     {
       "label": "Client",
       "type": "shell",
-      "command": "flutter run -d chrome --web-hostname papyrus.localhost --web-port 3000 --dart-define-from-file=.dart_defines",
+      "command": "${workspaceFolder}/tools/papyrus run client",
       "options": {
         "cwd": "${workspaceFolder}/client/app"
       },
@@ -31,7 +31,7 @@
     {
       "label": "Back-end",
       "type": "shell",
-      "command": "uv run uvicorn papyrus.main:app --reload --host 0.0.0.0 --port 8080",
+      "command": "${workspaceFolder}/tools/papyrus run server",
       "options": {
         "cwd": "${workspaceFolder}/server"
       },
@@ -82,6 +82,107 @@
       "presentation": {
         "panel": "dedicated",
         "clear": true,
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Diagnose workspace",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/papyrus",
+      "args": [
+        "doctor"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Check client",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/papyrus",
+      "args": [
+        "check",
+        "client"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Check server",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/papyrus",
+      "args": [
+        "check",
+        "server"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Check tooling",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/papyrus",
+      "args": [
+        "check",
+        "tooling"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Test client",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/papyrus",
+      "args": [
+        "test",
+        "client"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Test server",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/papyrus",
+      "args": [
+        "test",
+        "server"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
         "reveal": "always"
       }
     }
