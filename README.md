@@ -91,3 +91,6 @@ The same checks and test suites are available as VS Code tasks.
 
 See [development tooling](DEVELOPMENT.md) for the project skills, agent roles,
 Dart MCP integration, setup instructions, and verified baseline.
+
+See the [repository cleanup plan](CLEANUP_PLAN.md) for the audited branch,
+documentation, unused-code and structural maintenance backlog.
