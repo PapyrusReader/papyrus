@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CLIENT = ROOT / "client/app"
 SERVER = ROOT / "server"
+READER = ROOT / "reader"
 
 
 def run(args, cwd=ROOT, env=None):
@@ -77,11 +78,18 @@ def checks(component):
                     "--set-exit-if-changed",
                     "lib",
                     "test",
+                    "tool",
+                    "example/lib",
+                    "example/test",
                 ],
-                ROOT / "reader",
+                READER,
             ),
-            ([sdk_command("flutter"), "analyze", "--no-pub"], ROOT / "reader"),
+            (["bash", "tool/build_epub_worker.sh", "--check"], READER),
+            ([sdk_command("flutter"), "analyze", "--no-pub"], READER),
+            ([sdk_command("flutter"), "analyze", "--no-pub"], READER / "example"),
         ]
+    if component == "references":
+        return [([sys.executable, "tools/check_references.py"], ROOT)]
     return [
         (
             [sys.executable, "-m", "unittest", "discover", "-s", "tools/tests", "-v"],
@@ -92,7 +100,11 @@ def checks(component):
 
 
 def check(component):
-    components = ["tooling", "client", "server"] if component == "all" else [component]
+    components = (
+        ["tooling", "references", "client", "reader", "server"]
+        if component == "all"
+        else [component]
+    )
     failed = []
     for item in components:
         for args, cwd in checks(item):
@@ -226,7 +238,7 @@ def main(argv=None):
     )
     quality.add_argument(
         "component",
-        choices=["client", "server", "reader", "tooling", "all"],
+        choices=["client", "server", "reader", "tooling", "references", "all"],
         default="all",
         nargs="?",
     )
@@ -252,7 +264,7 @@ def main(argv=None):
             return test(options.component, args)
         if options.command == "deps":
             selected = (
-                ["client", "server"]
+                ["client", "reader", "server"]
                 if options.component == "all"
                 else [options.component]
             )
@@ -270,7 +282,7 @@ def main(argv=None):
                                 sdk_command("flutter"),
                                 "pub",
                                 "get",
-                                *(["--enforce-lockfile"] if item == "client" else []),
+                                "--enforce-lockfile",
                             ],
                             directory,
                         )

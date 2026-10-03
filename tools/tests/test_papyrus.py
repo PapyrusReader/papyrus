@@ -78,6 +78,27 @@ class WorkspaceCommandsTest(unittest.TestCase):
         self.assertIn("--set-exit-if-changed", args)
         self.assertEqual(cwd, cli.CLIENT)
 
+    def test_all_checks_include_reader_and_reference_gate(self):
+        with patch.object(cli, "checks", return_value=[]) as checks:
+            self.assertEqual(cli.check("all"), 0)
+        self.assertEqual(
+            [call.args[0] for call in checks.call_args_list],
+            ["tooling", "references", "client", "reader", "server"],
+        )
+
+    def test_all_flutter_dependencies_enforce_locks(self):
+        with (
+            patch.object(cli, "sdk_command", return_value="flutter"),
+            patch.object(cli, "run", return_value=0) as run,
+        ):
+            self.assertEqual(cli.main(["deps", "all"]), 0)
+        self.assertEqual(
+            [call.args[1] for call in run.call_args_list],
+            [cli.CLIENT, cli.READER, cli.SERVER],
+        )
+        for call in run.call_args_list[:2]:
+            self.assertIn("--enforce-lockfile", call.args[0])
+
     def test_sdk_absent_does_not_fall_back_to_global_flutter(self):
         with (
             tempfile.TemporaryDirectory() as directory,
