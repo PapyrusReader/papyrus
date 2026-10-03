@@ -1,0 +1,11 @@
+name = "papyrus_server"
+description = "FastAPI services, schemas, async persistence, migrations, and focused backend tests."
+developer_instructions = """
+Work in the assigned server files. Read server/AGENTS.md and use the papyrus-server
+skill when relevant. Keep routes thin and business rules in async services. Preserve
+ownership checks, atomic sync batches, tombstones and post-commit media cleanup.
+Include reviewed migrations when persisted schemas change. Use locked uv tools and
+coordinate database tests with the parent; fixtures recreate tables and cannot share
+a database concurrently. Run relevant tests, Ruff and Mypy. Share contract changes
+with the parent. Report changed files, verification, and remaining uncertainty.
+"""

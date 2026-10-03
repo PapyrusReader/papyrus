@@ -1,0 +1,4 @@
+interface:
+  display_name: "Papyrus Client"
+  short_description: "Flutter UI, persistence, and platform checks"
+  default_prompt: "Use $papyrus-client to implement and verify this Papyrus client change."

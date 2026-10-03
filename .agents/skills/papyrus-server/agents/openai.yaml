@@ -1,0 +1,4 @@
+interface:
+  display_name: "Papyrus Server"
+  short_description: "FastAPI services, migrations, and database tests"
+  default_prompt: "Use $papyrus-server to implement and verify this Papyrus backend change."

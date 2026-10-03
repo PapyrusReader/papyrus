@@ -1,0 +1,4 @@
+interface:
+  display_name: "Papyrus Sync Contract"
+  short_description: "Auth and offline sync across client and server"
+  default_prompt: "Use $papyrus-sync-contract to trace and verify this Papyrus contract change."

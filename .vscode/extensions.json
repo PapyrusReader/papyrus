@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "Dart-Code.flutter",
+    "Dart-Code.dart-code",
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "openai.chatgpt"
+  ]
+}

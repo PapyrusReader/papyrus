@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+"""Workspace commands using the project's pinned Flutter SDK and uv lock."""
+
+import argparse
+import json
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+CLIENT = ROOT / "client/app"
+SERVER = ROOT / "server"
+
+
+def run(args, cwd=ROOT, env=None):
+    print(f"[{cwd.relative_to(ROOT) or '.'}] {shlex.join(map(str, args))}", flush=True)
+    try:
+        return subprocess.run(
+            list(map(str, args)), cwd=cwd, env=env, check=False
+        ).returncode
+    except FileNotFoundError as error:
+        print(f"Missing command: {error.filename}", file=sys.stderr)
+        return 127
+
+
+def sdk_command(name):
+    command = ROOT / ".fvm/flutter_sdk/bin" / name
+    if not command.is_file():
+        raise RuntimeError("Project Flutter SDK is missing. Run tools/papyrus sdk.")
+    return str(command)
+
+
+def uv(*args):
+    return ["uv", "run", "--locked", *args]
+
+
+def checks(component):
+    if component == "client":
+        return [
+            (
+                [
+                    sdk_command("dart"),
+                    "format",
+                    "--output=none",
+                    "--set-exit-if-changed",
+                    ".",
+                ],
+                CLIENT,
+            ),
+            (
+                [
+                    sdk_command("flutter"),
+                    "analyze",
+                    "--no-pub",
+                    "--no-fatal-warnings",
+                    "--no-fatal-infos",
+                ],
+                CLIENT,
+            ),
+            (["node", "--test", "test/web/flutter_bootstrap_test.cjs"], CLIENT),
+        ]
+    if component == "server":
+        return [
+            (uv("ruff", "check", "."), SERVER),
+            (uv("ruff", "format", "--check", "."), SERVER),
+            (uv("mypy", "."), SERVER),
+        ]
+    if component == "reader":
+        return [
+            (
+                [
+                    sdk_command("dart"),
+                    "format",
+                    "--output=none",
+                    "--set-exit-if-changed",
+                    "lib",
+                    "test",
+                ],
+                ROOT / "reader",
+            ),
+            ([sdk_command("flutter"), "analyze", "--no-pub"], ROOT / "reader"),
+        ]
+    return [
+        (
+            [sys.executable, "-m", "unittest", "discover", "-s", "tools/tests", "-v"],
+            ROOT,
+        ),
+        (["shellcheck", "tools/flutter", "tools/dart", "tools/dart-mcp"], ROOT),
+    ]
+
+
+def check(component):
+    components = ["tooling", "client", "server"] if component == "all" else [component]
+    failed = []
+    for item in components:
+        for args, cwd in checks(item):
+            if run(args, cwd):
+                failed.append(shlex.join(args))
+    if failed:
+        print(
+            "Failed checks:\n" + "\n".join(f"  {item}" for item in failed),
+            file=sys.stderr,
+        )
+    return int(bool(failed))
+
+
+def test_server(args):
+    probe = """
+import json, os
+from sqlalchemy.engine import make_url
+from papyrus.config import get_settings
+s = get_settings()
+raw = os.environ.get('TEST_DATABASE_URL')
+url = make_url(raw) if raw else None
+host = url.host if url else os.environ.get('TEST_POSTGRES_HOST', s.postgres_host)
+db = url.database if url else os.environ.get(
+    'TEST_POSTGRES_DB', s.postgres_db + '_test'
+)
+print(json.dumps({'host': host, 'database': db, 'app_database': s.postgres_db}))
+"""
+    result = subprocess.run(
+        uv("python", "-c", probe), cwd=SERVER, capture_output=True, text=True
+    )
+    if result.returncode:
+        raise RuntimeError(
+            "Cannot load server test configuration. "
+            "Run tools/papyrus deps server and check server/.env."
+        )
+    target = json.loads(result.stdout)
+    database = target["database"] or ""
+    if (
+        target["host"] not in {"localhost", "127.0.0.1", "::1"}
+        or database == target["app_database"]
+        or not (database.endswith("_test") or database.startswith("test_"))
+    ):
+        raise RuntimeError(
+            "Tests drop tables. "
+            "Configure a distinct local database named test_* or *_test."
+        )
+    print(f"Test database: {database} on {target['host']}", flush=True)
+    lock = ROOT / ".local/server-test.lock"
+    lock.parent.mkdir(exist_ok=True)
+    try:
+        lock.mkdir()
+    except FileExistsError:
+        raise RuntimeError(
+            "Another server test command holds .local/server-test.lock. "
+            "Do not share its database."
+        ) from None
+    try:
+        return run(uv("pytest", "-m", "not auth_smoke", *args), SERVER)
+    finally:
+        lock.rmdir()
+
+
+def test(component, args):
+    if component == "server":
+        return test_server(args)
+    directory = CLIENT if component == "client" else ROOT / "reader"
+    return run([sdk_command("flutter"), "test", "--no-pub", *args], directory)
+
+
+def doctor():
+    failed = False
+    pin = json.loads((ROOT / ".fvmrc").read_text())["flutter"]
+    print(f"Workspace: {ROOT}\nFlutter pin: {pin}")
+    for name in ("git", "uv", "docker", "node", "gh", "jq", "shellcheck"):
+        executable = shutil.which(name)
+        print(
+            f"{'OK' if executable else 'MISSING'} {name}: {executable or 'not on PATH'}"
+        )
+        failed |= executable is None
+    for filename in (
+        "client/app/.dart_defines",
+        "client/app/.dart_tool/package_config.json",
+        "server/.env",
+        "server/.venv/bin/python",
+    ):
+        present = (ROOT / filename).is_file()
+        print(f"{'OK' if present else 'MISSING'} {filename}")
+        failed |= not present
+    try:
+        result = subprocess.run(
+            [sdk_command("flutter"), "--version", "--machine"],
+            capture_output=True,
+            text=True,
+        )
+        actual = (
+            json.loads(result.stdout)["frameworkVersion"]
+            if result.returncode == 0
+            else "unknown"
+        )
+        print(f"{'OK' if actual == pin else 'MISMATCH'} project Flutter: {actual}")
+        failed |= actual != pin
+    except (RuntimeError, ValueError):
+        print("MISSING project SDK: run tools/papyrus sdk")
+        failed = True
+    for name in ("client", "server", "reader", "docs", "website"):
+        if (ROOT / name / ".git").exists():
+            run(["git", "status", "--short", "--branch"], ROOT / name)
+        else:
+            print(f"MISSING submodule {name}")
+            failed = True
+    if shutil.which("docker"):
+        failed |= bool(run(["docker", "compose", "version"]))
+        failed |= bool(run(["docker", "info", "--format", "{{.ServerVersion}}"]))
+    if shutil.which("gh") and run(["gh", "auth", "status"]):
+        print(
+            "GitHub sign-in pending: gh auth login --web "
+            "(local development works without it)"
+        )
+    return int(failed)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("doctor", help="Inspect tools and repos without changing them")
+    commands.add_parser("sdk", help="Install/link the Flutter version in .fvmrc")
+    deps = commands.add_parser("deps", help="Install dependencies from existing locks")
+    deps.add_argument("component", choices=["client", "server", "reader", "all"])
+    quality = commands.add_parser(
+        "check", help="Check formatting, analysis and types without fixing files"
+    )
+    quality.add_argument(
+        "component",
+        choices=["client", "server", "reader", "tooling", "all"],
+        default="all",
+        nargs="?",
+    )
+    tests = commands.add_parser("test", help="Run tests; forward options after --")
+    tests.add_argument("component", choices=["client", "server", "reader"])
+    tests.add_argument("args", nargs=argparse.REMAINDER)
+    start = commands.add_parser(
+        "run", help="Run client or API with the workspace configuration"
+    )
+    start.add_argument("component", choices=["client", "server"])
+    options = parser.parse_args(argv)
+    try:
+        if options.command == "doctor":
+            return doctor()
+        if options.command == "sdk":
+            fvm = shutil.which("fvm") or str(Path.home() / ".pub-cache/bin/fvm")
+            pin = json.loads((ROOT / ".fvmrc").read_text())["flutter"]
+            return run([fvm, "use", pin, "--force", "--skip-pub-get"])
+        if options.command == "check":
+            return check(options.component)
+        if options.command == "test":
+            args = options.args[1:] if options.args[:1] == ["--"] else options.args
+            return test(options.component, args)
+        if options.command == "deps":
+            selected = (
+                ["client", "server"]
+                if options.component == "all"
+                else [options.component]
+            )
+            codes = []
+            for item in selected:
+                if item == "server":
+                    codes.append(
+                        run(["uv", "sync", "--locked", "--extra", "dev"], SERVER)
+                    )
+                else:
+                    directory = CLIENT if item == "client" else ROOT / "reader"
+                    codes.append(
+                        run(
+                            [
+                                sdk_command("flutter"),
+                                "pub",
+                                "get",
+                                *(["--enforce-lockfile"] if item == "client" else []),
+                            ],
+                            directory,
+                        )
+                    )
+            return int(any(codes))
+        if options.component == "server":
+            return run(
+                uv(
+                    "uvicorn",
+                    "papyrus.main:app",
+                    "--reload",
+                    "--host",
+                    "0.0.0.0",
+                    "--port",
+                    "8080",
+                ),
+                SERVER,
+            )
+        return run(
+            [
+                sdk_command("flutter"),
+                "run",
+                "-d",
+                "chrome",
+                "--web-hostname",
+                "papyrus.localhost",
+                "--web-port",
+                "3000",
+                "--dart-define-from-file=.dart_defines",
+            ],
+            CLIENT,
+        )
+    except (RuntimeError, OSError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

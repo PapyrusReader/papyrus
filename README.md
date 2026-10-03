@@ -7,6 +7,7 @@ This repository is the development entry point for Papyrus.
 - [Flutter](https://flutter.dev/)
 - [Docker](https://docs.docker.com/)
 - [Python](https://www.python.org/) and [uv](https://docs.astral.sh/uv/) package manager
+- [FVM](https://fvm.app/) to use the project Flutter version (`dart pub global activate fvm`)
 - [VS Code](https://code.visualstudio.com/) is recommended to run the included tasks
 
 ## Clone
@@ -57,12 +58,12 @@ docker compose up database mailpit powersync-storage powersync
 
 ```bash
 cd server
-uv run uvicorn papyrus.main:app --reload --host 0.0.0.0 --port 8080
+uv run --locked uvicorn papyrus.main:app --reload --host 0.0.0.0 --port 8080
 ```
 
 ```bash
 cd client/app
-flutter run -d chrome \
+../../tools/flutter run -d chrome \
   --web-hostname papyrus.localhost \
   --web-port 3000 \
   --dart-define-from-file=.dart_defines
@@ -72,3 +73,21 @@ flutter run -d chrome \
 
 The `Purge` task deletes local Papyrus databases, uploaded media, PowerSync
 state, and browser storage before recreating clean service state.
+
+## Development tools
+
+Use the workspace CLI from the repository root:
+
+```bash
+tools/papyrus doctor
+tools/papyrus check client
+tools/papyrus check server
+tools/papyrus test client -- test/auth/token_store_test.dart
+tools/papyrus test server -- tests/services/test_sync.py
+```
+
+It uses the Flutter version pinned in `.fvmrc` and the server's uv lockfile.
+The same checks and test suites are available as VS Code tasks.
+
+See [development tooling](DEVELOPMENT.md) for the project skills, agent roles,
+Dart MCP integration, setup instructions, and verified baseline.

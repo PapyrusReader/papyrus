@@ -1,0 +1,24 @@
+{
+  "dart.flutterSdkPath": ".fvm/flutter_sdk",
+  "dart.projectSearchDepth": 6,
+  "python.defaultInterpreterPath": "${workspaceFolder}/server/.venv/bin/python",
+  "python.analysis.extraPaths": ["${workspaceFolder}/server"],
+  "ruff.path": ["${workspaceFolder}/server/.venv/bin/ruff"],
+  "git.detectSubmodules": true,
+  "git.autoRepositoryDetection": "subFolders",
+  "[dart]": {
+    "editor.defaultFormatter": "Dart-Code.dart-code",
+    "editor.formatOnSave": true
+  },
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true
+  },
+  "files.watcherExclude": {
+    "**/.fvm/**": true,
+    "**/.local/**": true,
+    "**/.venv/**": true,
+    "**/.dart_tool/**": true,
+    "**/build/**": true
+  }
+}
