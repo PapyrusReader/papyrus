@@ -48,8 +48,10 @@ commit. Android codes are committed and monotonic, never workflow counters.
 
 - Follow [client release/signing and Play setup](client/docs/RELEASING.md).
 - Follow [server deployment and backup setup](server/deploy/README.md).
-- Choose a domain you control and reserve `api.<domain>`, `sync.<domain>` and
-  `app.<domain>` for the API, PowerSync and the verification/reset web app.
+- The registered domain is `papyrus-reader.com`. Use `api.papyrus-reader.com`,
+  `sync.papyrus-reader.com` and `app.papyrus-reader.com` for the API, PowerSync and
+  the verification/reset web app. Point these DNS records to the server after
+  selecting its public IP.
 - Build configuration belongs in the client GitHub `release` environment; server
   deployment secrets stay on the VM. No live infrastructure is provisioned by CI.
 - Internal testing is the initial target. Play account/app creation, upload key,
