@@ -130,3 +130,10 @@ The layout follows [Codex skills](https://learn.chatgpt.com/docs/build-skills),
 and [Dart MCP setup](https://docs.flutter.dev/ai/get-started). FVM's
 [project configuration](https://fvm.app/documentation/getting-started/configuration)
 keeps SDK selection separate from the global toolchain.
+
+## Coordinated releases
+
+See [RELEASING.md](RELEASING.md) for shared client/server version metadata,
+Android build numbers, first Google Play internal testing and the production
+server deployment runbook. `python3 tools/release.py check` validates the local
+release snapshot; CI uses `--committed` to check the recorded submodule revisions.
