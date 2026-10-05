@@ -73,6 +73,14 @@ as described in `reader/docs/validation.md`.
 Website checks use `npm ci && npm run build` in `website/`. Documentation checks
 use `uv sync --locked --extra dev && make build` in `docs/` (Graphviz required).
 
+Production on Hetzner uses three independent Compose projects: the shared HTTPS
+entry point in `deploy/edge`, app services in `server/deploy`, and the public
+website in `website/deploy`. Only the entry point owns public ports 80/443;
+the other projects expose internal services through the `papyrus-edge` network.
+Run `python3 tools/check_deployments.py` to validate project separation, routing
+aliases, published ports and private database networks without starting services.
+Each project's runbook covers its own deployment and releases.
+
 For a joint reader/client change, validate a local reader using an ignored
 `client/app/pubspec_overrides.yaml`, then remove the override and pin the published
 reader commit in `client/app/pubspec.yaml`. Regenerate the client lock and update

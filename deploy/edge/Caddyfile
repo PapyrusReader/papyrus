@@ -1,0 +1,23 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$WEBSITE_DOMAIN} {
+	reverse_proxy papyrus-website:8080
+}
+
+www.{$WEBSITE_DOMAIN} {
+	redir https://{$WEBSITE_DOMAIN}{uri} permanent
+}
+
+{$APP_DOMAIN} {
+	reverse_proxy papyrus-app:8080
+}
+
+{$API_DOMAIN} {
+	reverse_proxy papyrus-api:8080
+}
+
+{$SYNC_DOMAIN} {
+	reverse_proxy papyrus-sync:8080
+}
