@@ -1,0 +1,34 @@
+name: Deployment layout
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - 'tools/check_deployments.py'
+      - '.github/workflows/deployments.yml'
+      - 'server'
+      - 'website'
+  push:
+    branches: [master]
+    paths:
+      - 'deploy/**'
+      - 'tools/check_deployments.py'
+      - '.github/workflows/deployments.yml'
+      - 'server'
+      - 'website'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 tools/check_deployments.py
