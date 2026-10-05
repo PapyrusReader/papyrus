@@ -6,9 +6,9 @@ independent. Matching versions identify a release; they do not mean an old clien
 must stop working when the server advances. Keep `/v1` backwards compatible and
 deploy additive server changes before distributing a client that needs them.
 
-For the initial internal test, the coordinated version is `1.0.0`, Android build
-`1`. The server package's old `0.1.0` metadata is corrected to match its API and
-client. No reader version or reader implementation is changed by this policy.
+For the initial internal test, the coordinated version is `0.0.1`, Android build
+`1`. This marks an early testing release. No reader version or reader implementation
+is changed by this policy.
 
 ## Prepare a release
 
@@ -16,7 +16,7 @@ From the workspace root, on clean release branches:
 
 ```sh
 python3 tools/release.py check
-python3 tools/release.py bump 1.0.1 --android-build 2
+python3 tools/release.py bump 0.0.2 --android-build 2
 python3 tools/release.py check
 ```
 
@@ -43,6 +43,8 @@ new server or publish a Play release. Dependency-only edits to a manifest do not
 release. Manual workflow dispatch on `master` bootstraps the first build or retries
 an unreleased commit. Existing released tags cannot be reassigned to a different
 commit. Android codes are committed and monotonic, never workflow counters.
+Before a repository has any release tags, its initial version can be reset without
+increasing an unused Android code. Once releases exist, the gate enforces increases.
 
 ## First-device-test setup
 
