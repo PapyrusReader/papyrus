@@ -1,0 +1,25 @@
+name: Coordinated release versions
+
+on:
+  push:
+    branches: [master]
+    paths: ['release.json', 'client', 'server', 'tools/release.py', '.github/workflows/releases.yml']
+  pull_request:
+    paths: ['release.json', 'client', 'server', 'tools/release.py', '.github/workflows/releases.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/release.py check --committed
+      - run: python -m unittest discover -s tools/tests -p 'test_release*.py' -v
