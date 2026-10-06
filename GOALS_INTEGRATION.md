@@ -22,12 +22,13 @@ release workflow when ready; this work does not trigger a version-based release.
 
 - [Reader #5](https://github.com/PapyrusReader/reader/pull/5): generic activity observations, committed revision `bc617deeaf2ae684f20c1000ed7cd52f9a61d0a7`.
 - [Server #12](https://github.com/PapyrusReader/server/pull/12): owned ledger and tracking capability, committed revision `91a1612a0c650f07ce0d7e3fe5266efe3969eeaa`.
-- [Client #40](https://github.com/PapyrusReader/client/pull/40): Goals and durable foreground tracking, committed revision `a5c5e8b2375d014e9f7680f1957a2c1050287210`.
+- [Client #40](https://github.com/PapyrusReader/client/pull/40): Goals and durable foreground tracking, committed revision `6fa232c0b4eeacd293d17126907cd932b843a05e`.
 
 ## Validation evidence
 
 Final client integration: 1,541 tests passed, 19 skipped; final focused identity,
-tracker, and persistence checks: 11 passed. Analysis, formatting, bootstrap tests,
+tracker, and persistence checks: 11 passed. Final goal replacement, deadline, UI,
+projection, and persistence regressions: 41 passed. Analysis, formatting, bootstrap tests,
 and production web build passed. Android and Chromium host checks exercised real
 EPUB/PDF reading, durable checkpoints, exposed coverage, and pause/exit behavior.
 Light/dark/e-ink Goals and fixed-footers were inspected at phone, tablet, desktop,
