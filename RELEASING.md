@@ -10,9 +10,21 @@ For the initial internal test, the coordinated version is `0.0.1`, Android build
 `1`. This marks an early testing release. No reader version or reader implementation
 is changed by this policy.
 
+## Integrate changes
+
+`development` is the long-lived default branch in every repository. Ordinary
+feature/fix PRs target it, without version bumps. Integration merges run checks
+and accumulate work; client/server builds and website deployments remain gated
+by version changes on `master`, the release branch.
+
+Prepare version bumps only when ready to promote a batch of changes. Website
+releases keep their independent version and deployment workflow. Reader and docs
+follow the same integration/promotion flow; docs publish from `master`.
+
 ## Prepare a release
 
-From the workspace root, on clean release branches:
+From the workspace root, on clean release-preparation branches based on
+`development` in the workspace, client and server:
 
 ```sh
 python3 tools/release.py check
@@ -27,15 +39,24 @@ metadata. For a client-only rebuild (new endpoint settings, signing retry after
 an uploaded build, etc.), keep the semantic number and increase `--android-build`.
 The unchanged server version skips its release build.
 
-1. Create component PRs and run checks appropriate to the changed behavior.
-2. Merge the server PR first if both versions changed. Its workflow publishes the
-   versioned GHCR image; deploy and verify it before rolling out the client.
-3. Merge the client PR. Its workflow compares the actual committed version with
-   the previous push and builds signed Android AAB/web/Linux/Windows artifacts.
-4. Update the workspace component pointers to the reviewed commits and commit
-   `release.json`. The workspace release CI checks **recorded gitlinks**, not a
-   contributor's dirty working copies. A coordinated workspace PR becomes valid
-   when its recorded client/server versions agree with the release snapshot.
+1. Open the component version-preparation PRs against `development`, run checks
+   appropriate to the changed behavior, and merge them. This does not release.
+2. Open `development` → `master` release PRs for the server and client. Use
+   **Create a merge commit**, preserving the integration branch's history.
+3. Merge the server release PR first if both versions changed. Its workflow
+   publishes the versioned GHCR image; deploy and verify it before rolling out
+   the client.
+4. Merge the client release PR. Its workflow compares the actual committed
+   version with the previous push and builds signed Android AAB/web/Linux/Windows
+   artifacts. Google Play upload and rollout remain separate steps.
+5. Update the workspace component pointers to the reviewed release commits and
+   commit `release.json` in a PR against workspace `development`. Release CI
+   checks **recorded gitlinks**, not dirty working copies. When this snapshot
+   passes, promote workspace `development` to `master` with a merge-commit PR.
+6. Bring each released repository's `master` back into `development` before the
+   next batch of work. If `development` has no newer commits, fast-forward it to
+   `master`; otherwise open a `master` → `development` synchronization PR and
+   merge it with a merge commit. Keep both long-lived branches.
 
 These are independent Git histories, so there is no atomic multi-repo merge.
 The workspace validates the final snapshot; it does not automatically deploy a

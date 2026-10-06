@@ -1,20 +1,20 @@
 [submodule "client"]
 	path = client
 	url = https://github.com/PapyrusReader/client.git
-	branch = master
+	branch = development
 [submodule "server"]
 	path = server
 	url = https://github.com/PapyrusReader/server.git
-	branch = master
+	branch = development
 [submodule "reader"]
 	path = reader
 	url = https://github.com/PapyrusReader/reader.git
-	branch = master
+	branch = development
 [submodule "website"]
 	path = website
 	url = https://github.com/PapyrusReader/website.git
-	branch = master
+	branch = development
 [submodule "docs"]
 	path = docs
 	url = https://github.com/PapyrusReader/docs.git
-	branch = master
+	branch = development

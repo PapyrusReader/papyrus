@@ -9,7 +9,7 @@ on:
       - 'server'
       - 'website'
   push:
-    branches: [master]
+    branches: [development, master]
     paths:
       - 'deploy/**'
       - 'tools/check_deployments.py'
