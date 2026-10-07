@@ -21,8 +21,8 @@ release workflow when ready; this work does not trigger a version-based release.
 ## Coordinated changes
 
 - [Reader #5](https://github.com/PapyrusReader/reader/pull/5): generic activity observations, committed revision `bc617deeaf2ae684f20c1000ed7cd52f9a61d0a7`.
-- [Server #12](https://github.com/PapyrusReader/server/pull/12): owned ledger and tracking capability, committed revision `91a1612a0c650f07ce0d7e3fe5266efe3969eeaa`.
-- [Client #40](https://github.com/PapyrusReader/client/pull/40): Goals and durable foreground tracking, committed revision `6fa232c0b4eeacd293d17126907cd932b843a05e`.
+- [Server #12](https://github.com/PapyrusReader/server/pull/12): owned ledger and tracking capability, committed revision `66a08012390d91dca05ad8d4d48470c7c999eff4`.
+- [Client #40](https://github.com/PapyrusReader/client/pull/40): Goals and durable foreground tracking, committed revision `5e67e5969a956f4f42c5c330cbc38350f5ac8fd8`.
 
 ## Validation evidence
 
@@ -42,3 +42,24 @@ and Mypy passed. Migration tests preserve pre-existing data.
 Shared aggregation fixtures cover concurrent-device overlap and coverage. Live
 two-device PowerSync transport was not exercised; this remains an opt-in check
 with configured services, rather than a claim implied by local database tests.
+
+## Goals refinement validation (2026-10-08)
+
+The latest client adds progress-based Overview groups, compact completed filters,
+swipeable tabs, shared collection-page toolbar sizing, improved goal/activity
+sheets, Daily defaults, and multiple selected books. Activity row and history
+expansion state has separate storage keys from scroll offsets. Goal details show
+eligible time after creation cutoffs and overlapping intervals.
+
+Tracking schema version 2 adds `book_ids` and validates ownership of each selected
+book. Unsupported version-2 tracking stays staged without blocking older-server
+library uploads; existing single-book goals retain version-1 payloads.
+
+The final client suite passed 1,598 tests with 19 skipped. The latest 27 focused
+server tracking, goal, and sync tests passed. Client formatting, analyzer and web
+bootstrap checks, server Ruff/Mypy checks, and reader reference checks passed.
+The production web build also passed.
+Current UI review screenshots are committed in
+`client/docs/images/goals-review` and embedded in client PR #40. These use isolated
+synthetic activity fixtures; earlier real-reader validation is described above.
+Live multi-device PowerSync transport has not been rerun.
