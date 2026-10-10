@@ -7,6 +7,16 @@ Component instructions still define architecture, ownership, and validation.
 
 ## Shared rules
 
+### Implement the current contract
+
+Papyrus is pre-release. Do not add backwards-compatibility aliases, legacy data
+fallbacks, old payload promotion, or version-specific behavior for previous app
+versions. Update producers, consumers, and tests together when a contract changes.
+Keep validation for malformed data, offline retry behavior, and support for current
+external file formats and dependency APIs. Database schema revisions remain the
+mechanism for creating and evolving the database; do not rewrite applied migration
+history or reset local libraries as part of routine code cleanup.
+
 ### Put blank lines around blocks
 
 Keep consecutive single-line statements together. A change in purpose, such as
