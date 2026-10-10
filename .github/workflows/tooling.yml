@@ -10,13 +10,6 @@ on:
       - 'reader'
       - '.gitmodules'
   pull_request:
-    paths:
-      - 'tools/**'
-      - '.vscode/setup.sh'
-      - '.github/workflows/tooling.yml'
-      - 'client'
-      - 'reader'
-      - '.gitmodules'
   workflow_dispatch:
 
 permissions:
