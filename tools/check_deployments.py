@@ -57,6 +57,9 @@ def main() -> None:
         assert set(app["services"][database]["networks"]) == {"default"}
     for name, alias in (("api", "papyrus-api"), ("powersync", "papyrus-sync"), ("web", "papyrus-app")):
         assert alias in app["services"][name]["networks"]["edge"]["aliases"]
+    assert any(volume["target"] == "/srv/web" and volume["read_only"] for volume in app["services"]["web"]["volumes"]), (
+        "Mount the web parent directory so atomic current symlink replacements are visible"
+    )
     assert set(website["services"]) == {"website"}
     site = website["services"]["website"]
     assert set(site["networks"]) == {"edge"}

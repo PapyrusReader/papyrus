@@ -48,7 +48,9 @@ The unchanged server version skips its release build.
    the client.
 4. Merge the client release PR. Its workflow compares the actual committed
    version with the previous push and builds signed Android AAB/web/Linux/Windows
-   artifacts. Google Play upload and rollout remain separate steps.
+   artifacts, including desktop installers. After GitHub publication, independent
+   jobs deploy the web app and publish Android to Play internal testing. Public
+   Play rollout remains a separate process.
 5. Update the workspace component pointers to the reviewed release commits and
    commit `release.json` in a PR against workspace `development`. Release CI
    checks **recorded gitlinks**, not dirty working copies. When this snapshot
@@ -60,7 +62,7 @@ The unchanged server version skips its release build.
 
 These are independent Git histories, so there is no atomic multi-repo merge.
 The workspace validates the final snapshot; it does not automatically deploy a
-new server or publish a Play release. Dependency-only edits to a manifest do not
+new server. Client delivery is owned by the client release workflow. Dependency-only edits to a manifest do not
 release. Manual workflow dispatch on `master` bootstraps the first build or retries
 an unreleased commit. Existing released tags cannot be reassigned to a different
 commit. Android codes are committed and monotonic, never workflow counters.
