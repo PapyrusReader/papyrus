@@ -5,7 +5,6 @@ on:
     branches: [development, master]
     paths: ['release.json', 'client', 'server', 'tools/release.py', '.github/workflows/releases.yml']
   pull_request:
-    paths: ['release.json', 'client', 'server', 'tools/release.py', '.github/workflows/releases.yml']
   workflow_dispatch:
 
 permissions:
