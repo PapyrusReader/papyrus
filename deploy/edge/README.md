@@ -16,7 +16,7 @@ external `papyrus-edge` Docker network:
 Install these files at `/srv/apps/papyrus-edge` on the VM. Copy
 `edge.env.example` to `edge.env`, set the ACME contact email, and run
 `sh deploy.sh`. Keep `edge.env` private with `chmod 600 edge.env`. Configure the
-app and website Compose projects separately. their runbooks describe their
+app and website Compose projects separately. Their runbooks describe their
 releases. Starting or stopping either project does not restart the shared proxy.
 The proxy mounts no app or website content and does not need database credentials.
 
@@ -34,6 +34,5 @@ certificate data into the new data volume, then start this proxy to take over
 80/443. Preserve the app database/media volumes and keep the previous proxy
 configuration and certificate volumes for rollback.
 
-The public website status page reads API health through a CORS response limited
-to GET `/health` and the configured website origin. This exposes no private
-account endpoints. Sync readiness already permits public browser reads.
+The public website status page reads a cached snapshot maintained by its own
+scheduled monitor. The edge does not enable cross-origin browser health checks.
