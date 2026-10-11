@@ -87,3 +87,53 @@ Use focused tests for the feature being released. Release-gate tests are fast
 stdlib tests without Flutter or a database; native packaging gets an actual
 Android build and page-size check. Full application suites remain part of existing
 component PR CI, not something to rerun locally for every version-only edit.
+
+## 0.0.2 delivery validation
+
+Validation on 2026-10-11:
+
+- Native Windows and Ubuntu 24.04/Debian 13 checks pass on client `0.0.2+2`
+  final preparation commit `183bc88` (Linux run `38095826469`, Windows run
+  `38095826488`). Debian 13 runs in a native x64 container on the Ubuntu runner. Packaged EPUB/PDF rendering, offline import,
+  reader resume and guest/account/server-profile isolation pass. Installer
+  upgrade/removal/reinstall preserve the test library and settings; Windows also
+  preserves a namespaced credential and restores a quarantined WebView2 runtime.
+  The Windows runner is not a clean OS image; headless Linux does not test a
+  desktop Secret Service credential store.
+- Server `v0.0.2` was published from `e130164` and deployed by its verified image
+  digest. A fresh encrypted database/media/configuration backup was checked
+  before migration. All 20 existing application tables retained identical row
+  fingerprints across `af0fea8d6317` → `b5c6d7e8f901`, and `alembic check` reports
+  no drift. Public API version/health, tracking schema 2 and PowerSync readiness
+  pass. The publication includes all 12 sync tables. Database and static-web
+  containers were not restarted.
+- Publication SQL must be streamed from the released host file during an upgrade:
+  a running database container may still see the old inode through its individual
+  file bind mount. The regression-tested correction from server PRs #19/#20
+  is installed from master `52c427b`; the published application image remains
+  the unchanged `e130164` build. Master was synchronized back into development.
+- Client `v0.0.2+2` was published from `6fcdb7c` in run `38096425056`.
+  All four builds, GitHub publication, web deployment and Play internal delivery
+  passed. Every downloaded asset matches the published manifest/checksum index.
+  Delivery-only retry `38097044061` passed without rebuilding or changing any
+  published asset; Play recognized the matching completed internal release.
+- Public web metadata, `/`, `/login`, `flutter_bootstrap.js` and `main.dart.js`
+  match the published archive byte-for-byte. The login screen renders in Chrome.
+  Cloudflare's default browser TTL initially replaced JavaScript revalidation
+  with four-hour caching; an app-host-only rule now bypasses its edge cache and
+  respects origin browser TTL. All five public paths return `no-cache`. Client
+  PRs #53/#54 add regression coverage for cache-header drift and stale compiled
+  apps, using canonical browser URLs without cache-bypassing requests. The
+  verifier is installed from client master `9292922`; application artifacts
+  remain the unchanged `6fcdb7c` build.
+  The previous web directory remains available. API, PowerSync, both databases
+  and web container identities/start times remained unchanged during delivery.
+- Website `v1.1.2` was published/deployed from `5e4aa8c` in run `38097027158`;
+  public metadata confirms that revision. Website and client release histories
+  were synchronized back to development using PRs.
+- A connected Samsung SM-S928B updated through Play to `versionName=0.0.2`,
+  `versionCode=2`; both installer and initiating source are
+  `com.android.vending`. Its original October 6 installation timestamp remains;
+  the app process runs without fatal entries in its current crash log. No app
+  data was cleared or sideloaded. One tester account reported Item not found;
+  a second already-authorized tester account successfully installed the update.
