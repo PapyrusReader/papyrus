@@ -64,9 +64,8 @@ def main() -> None:
     site = website["services"]["website"]
     assert set(site["networks"]) == {"edge"}
     assert "papyrus-website" in site["networks"]["edge"]["aliases"]
-    assert len(site["volumes"]) == 1
-    assert site["volumes"][0]["target"] == "/srv/site"
-    assert site["volumes"][0]["read_only"]
+    assert {volume["target"] for volume in site["volumes"]} == {"/srv/site", "/srv/status", "/etc/caddy/Caddyfile"}
+    assert all(volume["read_only"] for volume in site["volumes"])
     print("Three independent Compose projects validated; only the edge publishes ports and databases stay private")
 
 

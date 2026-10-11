@@ -15,16 +15,6 @@ www.{$WEBSITE_DOMAIN} {
 }
 
 {$API_DOMAIN} {
-	@websiteHealth {
-		path /health
-		method GET
-		header Origin https://{$WEBSITE_DOMAIN}
-	}
-	header @websiteHealth {
-		Access-Control-Allow-Origin https://{$WEBSITE_DOMAIN}
-		Cache-Control no-store
-		defer
-	}
 	reverse_proxy papyrus-api:8080
 }
 
