@@ -122,7 +122,10 @@ Validation on 2026-10-11:
   Cloudflare's default browser TTL initially replaced JavaScript revalidation
   with four-hour caching; an app-host-only rule now bypasses its edge cache and
   respects origin browser TTL. All five public paths return `no-cache`. Client
-  PR #53 adds regression coverage for cache-header drift and stale compiled apps.
+  PRs #53/#54 add regression coverage for cache-header drift and stale compiled
+  apps, using canonical browser URLs without cache-bypassing requests. The
+  verifier is installed from client master `9292922`; application artifacts
+  remain the unchanged `6fcdb7c` build.
   The previous web directory remains available. API, PowerSync, both databases
   and web container identities/start times remained unchanged during delivery.
 - Website `v1.1.2` was published/deployed from `5e4aa8c` in run `38097027158`;
