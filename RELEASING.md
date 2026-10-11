@@ -128,5 +128,9 @@ Validation on 2026-10-11:
 - Website `v1.1.2` was published/deployed from `5e4aa8c` in run `38097027158`;
   public metadata confirms that revision. Website and client release histories
   were synchronized back to development using PRs.
-- The real device's Play build-2 update remains pending; build 1's Play installer
-  source was verified before rollout.
+- A connected Samsung SM-S928B updated through Play to `versionName=0.0.2`,
+  `versionCode=2`; both installer and initiating source are
+  `com.android.vending`. Its original October 6 installation timestamp remains;
+  the app process runs without fatal entries in its current crash log. No app
+  data was cleared or sideloaded. One tester account reported Item not found;
+  a second already-authorized tester account successfully installed the update.
