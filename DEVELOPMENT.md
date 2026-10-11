@@ -39,6 +39,25 @@ VS Code recommendations and settings configure Dart/Flutter, Python and Ruff,
 the FVM SDK, `server/.venv`, and submodule discovery. Format on save is enabled for
 Dart/Python. The installed `code` CLI can open this workspace with `code .`.
 
+## Branch workflow
+
+Use `development` for integration in each repository. Create feature/fix branches
+from the relevant repository's `origin/development` and open PRs against
+`development`. CI checks PRs and integration pushes; merging a fix does not
+publish a release. Leave version numbers unchanged until release preparation.
+
+`master` contains releases. When ready, prepare the existing version bump on
+`development` and open a `development` → `master` release PR. Use **Create a merge
+commit**, then bring `master` back into `development` to keep both histories
+connected. Do not squash or rebase a release promotion. See `RELEASING.md` for
+client/server coordination and the website README for independent website
+releases. Reader and documentation changes use the same branch flow; docs publish
+only from `master`.
+
+Submodule `branch` settings follow `development` for intentional remote updates;
+normal clones and CI still use the recorded commit pointers. Updating submodules
+is a separate reviewed change, not an automatic branch switch.
+
 ## Everyday commands
 
 Run these from the workspace root, or invoke the CLI by its path from another

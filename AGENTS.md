@@ -20,6 +20,24 @@ checkout while investigating: setup updates submodules to recorded revisions.
 Preserve existing changes and detached submodule revisions. Before implementation,
 check the relevant repo's status and choose a branch if commits are requested.
 
+## Coding style
+
+Read `CODING_STYLE.md` before writing or changing client or server code. It records
+the maintainer's reviewed preferences with examples. Apply its naming, block
+spacing, branching, and multiline layout rules to changed code. Component
+`AGENTS.md` files summarize the applicable rules for standalone checkouts. Keep
+changes scoped; do not reformat unrelated code.
+
+## Branches and releases
+
+`development` is the default integration branch in the workspace and component
+repositories. Branch fixes/features from it and target it with ordinary PRs.
+Keep version numbers unchanged while accumulating fixes. `master` is the release
+branch; promote `development` with a release PR when ready, using the existing
+version bump process in `RELEASING.md`. Use a merge commit for promotion and bring
+`master` back into `development` afterwards. Do not rename `master` or deploy from
+`development`. Website versioning remains independent of client/server versions.
+
 ## Tools and checks
 
 `tools/papyrus` resolves paths from its own location and runs from the correct repo.

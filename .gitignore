@@ -3,3 +3,4 @@
 .local/
 __pycache__/
 deploy/edge/edge.env
+examples/

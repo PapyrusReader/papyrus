@@ -2,14 +2,8 @@ name: Deployment layout
 
 on:
   pull_request:
-    paths:
-      - 'deploy/**'
-      - 'tools/check_deployments.py'
-      - '.github/workflows/deployments.yml'
-      - 'server'
-      - 'website'
   push:
-    branches: [master]
+    branches: [development, master]
     paths:
       - 'deploy/**'
       - 'tools/check_deployments.py'
