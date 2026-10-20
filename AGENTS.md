@@ -65,6 +65,11 @@ needed when the session already provides browser/computer-use tools.
 
 ## Reusable workflows
 
+Requirements and implementation tasks use the [Papyrus GitHub project](https://github.com/orgs/PapyrusReader/projects/1).
+Follow `docs/implementation/github-workflow.rst` for synchronization and local
+agent claims. Work from scoped Ready issues, honor dependencies, and link the
+owning issue and requirement IDs in PRs targeting `development`.
+
 Project skills live in `.agents/skills`:
 
 - `papyrus-client`: client implementation and platform verification.
