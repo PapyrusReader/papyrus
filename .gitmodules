@@ -18,3 +18,7 @@
 	path = docs
 	url = https://github.com/PapyrusReader/docs.git
 	branch = development
+[submodule "observability"]
+	path = observability
+	url = https://github.com/PapyrusReader/observability.git
+	branch = development
