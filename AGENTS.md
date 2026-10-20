@@ -11,6 +11,7 @@ coordinates independent Git submodules; each component has its own history and C
 | Server | `server/papyrus` | FastAPI routes, async services, PostgreSQL models, auth, media, sync validation |
 | Reader | `reader/lib` | EPUB/PDF reading engine and public reader API |
 | Docs | `docs` | Sphinx documentation |
+| Observability | `observability` | Shared HTTPS proxy, metrics, logs, dashboards, alerts |
 | Website | `website` | Public landing page |
 
 Read `client/AGENTS.md` or `server/AGENTS.md` for component changes. Start with the

@@ -35,11 +35,12 @@ def compose(source: Path, sample: Path | None = None) -> dict:
 
 
 def main() -> None:
-    edge = compose(ROOT / "deploy/edge/compose.yml", ROOT / "deploy/edge/edge.env.example")
+    edge = compose(ROOT / "observability/edge/compose.yml", ROOT / "observability/edge/edge.env.example")
     app = compose(ROOT / "server/deploy/compose.yml", ROOT / "server/deploy/production.env.example")
     website = compose(ROOT / "website/deploy/compose.yml")
-    assert {edge["name"], app["name"], website["name"]} == {
-        "papyrus-edge", "papyrus-production", "papyrus-website",
+    monitoring = compose(ROOT / "observability/monitoring/compose.yml", ROOT / "observability/monitoring/monitoring.env.example")
+    assert {edge["name"], app["name"], website["name"], monitoring["name"]} == {
+        "papyrus-edge", "papyrus-production", "papyrus-website", "papyrus-observability",
     }, "Each deployment must have its own Compose project"
     for project in (edge, app, website):
         assert project["networks"]["edge"]["external"]
@@ -50,7 +51,7 @@ def main() -> None:
     assert {volume["target"] for volume in proxy["volumes"]} == {
         "/etc/caddy/Caddyfile", "/data", "/config",
     }, "The edge proxy must not mount app or website content"
-    for project in (app, website):
+    for project in (app, website, monitoring):
         for service in project["services"].values():
             assert not service.get("ports"), "Only the edge project may publish ports"
     for database in ("database", "powersync-storage"):
@@ -66,7 +67,11 @@ def main() -> None:
     assert "papyrus-website" in site["networks"]["edge"]["aliases"]
     assert {volume["target"] for volume in site["volumes"]} == {"/srv/site", "/srv/status", "/etc/caddy/Caddyfile"}
     assert all(volume["read_only"] for volume in site["volumes"])
-    print("Three independent Compose projects validated; only the edge publishes ports and databases stay private")
+    assert set(monitoring["services"]) == {"grafana", "prometheus", "loki", "alloy"}
+    assert set(monitoring["services"]["prometheus"]["networks"]) == {"monitoring"}
+    assert set(monitoring["services"]["loki"]["networks"]) == {"monitoring"}
+    assert monitoring["networks"]["application"]["name"] == "papyrus-production_default"
+    print("Four independent Compose projects validated; only the edge publishes ports and databases stay private")
 
 
 if __name__ == "__main__":
