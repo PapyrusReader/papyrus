@@ -123,6 +123,24 @@ npm --prefix server/frontend/dev-pages run build
 
 ## Skills and agents
 
+The [Papyrus GitHub project](https://github.com/orgs/PapyrusReader/projects/1)
+tracks requirements and component issues. Requirements and bounded tasks are
+defined in the docs repository. From `docs`, run `make project-plan` to preview
+synchronization and `make project-sync` to apply it after committing and pushing
+the specification.
+
+To work on a Ready task locally, run from `docs`:
+
+```bash
+uv run --locked python scripts/work_issue.py https://github.com/PapyrusReader/docs/issues/NUMBER --check
+uv run --locked python scripts/work_issue.py https://github.com/PapyrusReader/docs/issues/NUMBER --launch
+```
+
+The launcher checks dependencies and the merged specification, claims the issue,
+and creates an isolated checkout. Omit `--launch` to prepare a prompt for another
+local agent. See [the workflow guide](docs/implementation/github-workflow.rst)
+for ownership, recovery, review, and completion.
+
 `AGENTS.md` maps ownership and tools. `client/AGENTS.md` covers Flutter conventions,
 while `server/AGENTS.md` retains its service-layer, testing and migration rules.
 
