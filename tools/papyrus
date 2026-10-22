@@ -209,7 +209,7 @@ def doctor():
     except (RuntimeError, ValueError):
         print("MISSING project SDK: run tools/papyrus sdk")
         failed = True
-    for name in ("client", "server", "reader", "docs", "website"):
+    for name in ("client", "server", "reader", "docs", "website", "observability"):
         if (ROOT / name / ".git").exists():
             run(["git", "status", "--short", "--branch"], ROOT / name)
         else:
