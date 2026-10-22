@@ -25,6 +25,8 @@ def compose(source: Path, sample: Path | None = None) -> dict:
                 values[key] = "a" * 64
         if "ACME_EMAIL" in values:
             values["ACME_EMAIL"] = "deployment@example.org"
+        if "FORWARDED_ALLOW_IPS" in values:
+            values["FORWARDED_ALLOW_IPS"] = "172.20.0.2"
         environment = target / "production.env"
         environment.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
         output = subprocess.check_output([
