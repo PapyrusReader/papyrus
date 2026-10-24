@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from release import version_tuple
+from release_deployment import DeploymentError, migration_heads, validate_target, verify_server
 from release_progress import activity, command_label, update
 
 PR_FIELDS = (
@@ -461,10 +462,22 @@ class Manager:
 
             return step(name, "publishing", detail, revision=revision, run=run)
 
-        verification = component.get("verification", {})
+        if name == "server":
+            try:
+                deployment = self.check_server_deployment(plan, revision)
+            except (
+                DeploymentError, ReleaseError, OSError, ValueError, KeyError, SyntaxError, subprocess.TimeoutExpired
+            ) as error:
+                return step(
+                    name,
+                    "published",
+                    str(error),
+                    revision=revision,
+                    run=run,
+                    deployment_configured=(self.root / ".local/release-deployment.json").exists(),
+                )
 
-        if verification.get("revision") == revision:
-            return step(name, "verified", "operator verified", revision=revision, run=run)
+            return step(name, "verified", "live deployment checked", revision=revision, run=run, deployment=deployment)
 
         if name != "server" and run and run["conclusion"] == "success":
             jobs = self.github.data("run", "view", run["databaseId"], "--repo", component["repo"], "--json", "jobs")
@@ -490,6 +503,27 @@ class Manager:
             detail = f"delivery {run['conclusion'] or run['status']} {run['url']}"
 
         return step(name, "published", detail, revision=revision, run=run)
+
+    def check_server_deployment(self, plan, revision):
+        target_path = self.root / ".local/release-deployment.json"
+
+        if not target_path.exists():
+            raise DeploymentError("live deployment check required (configure verify --server-url --ssh-host --container)")
+
+        target = json.loads(target_path.read_text())
+        validate_target(target)
+        component = plan["components"]["server"]
+        image_record = self.github.call(
+            "release", "download", component["tag"], "--repo", component["repo"], "--pattern", "image.txt", "--output", "-"
+        )
+        paths = git(self.path("server"), "ls-tree", "-r", "--name-only", revision, "alembic/versions").splitlines()
+        migrations = migration_heads(
+            read_file(self.path("server"), revision, path) for path in paths if path.endswith(".py")
+        )
+        update("Checking live server deployment")
+        return verify_server(
+            target, version=plan["version"], revision=revision, image_record=image_record, migrations=migrations
+        )
 
     def component_step(self, plan, name):
         component = plan["components"][name]
@@ -663,7 +697,17 @@ class Manager:
         observations = self.observe(plan)
 
         if all(item["stage"] == "verified" for item in observations.values()):
-            return {name: self.sync_step(plan, name, observations[name]["revision"]) for name in plan["components"]}
+            synchronized = {}
+
+            for name in plan["components"]:
+                item = self.sync_step(plan, name, observations[name]["revision"])
+
+                if item["stage"] == "complete":
+                    item["detail"] = observations[name]["detail"]
+
+                synchronized[name] = item
+
+            return synchronized
 
         return observations
 
@@ -876,9 +920,20 @@ class Manager:
         self.save(plan)
         return head
 
-    def verify(self, plan, name, revision, evidence):
+    def verify(self, plan, name, revision, evidence="", *, target=None):
         if name not in plan["components"] or name == "workspace":
             raise ReleaseError("Choose a released component")
+
+        if target is not None:
+            if name != "server":
+                raise ReleaseError("Deployment target options apply only to server")
+
+            validate_target(target)
+            target_path = self.root / ".local/release-deployment.json"
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(target, indent=2) + "\n")
+            temporary.replace(target_path)
 
         observations = self.observe(plan)
         item = observations[name]
@@ -886,13 +941,14 @@ class Manager:
         if item["stage"] not in ("published", "verified") or item.get("revision") != revision:
             raise ReleaseError("Verification must identify the published release commit exactly")
 
-        if not evidence.strip():
-            raise ReleaseError("Deployment evidence is required")
+        if item["stage"] != "verified":
+            raise ReleaseError(f"{name}: {item['detail']}. Notes cannot override deployment checks")
 
         plan["components"][name]["verification"] = {
             "revision": revision,
             "evidence": evidence,
             "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "method": "live" if name == "server" else "delivery workflow",
         }
         self.save(plan)
 
@@ -982,9 +1038,20 @@ def next_step(plan, observations):
             )
 
         if item["stage"] == "published":
+            if name == "server":
+                configure = ""
+
+                if not item.get("deployment_configured"):
+                    configure = " --server-url https://<api-host> --ssh-host <ssh-alias> --container <api-container>"
+
+                return (
+                    f"Deploy the released server and migrations, then run: {command} verify {release_id} "
+                    f"--component server --revision {item['revision']}{configure}"
+                )
+
             return (
-                f"Deploy and verify {name}, then record evidence: {command} verify {release_id} "
-                f"--component {name} --revision {item['revision']} --evidence '<verification details>'"
+                f"Complete the {name} delivery workflow and its verification steps, then rerun: "
+                f"{command} status {release_id}"
             )
 
         if item["stage"] == "publishing":
@@ -1074,7 +1141,10 @@ def parser():
 
         if name == "verify":
             subparser.add_argument("--revision", required=True)
-            subparser.add_argument("--evidence", required=True, help="Operator's deployment verification evidence")
+            subparser.add_argument("--evidence", default="", help="Optional note, never overrides deployment checks")
+            subparser.add_argument("--server-url", help="Public API HTTPS origin")
+            subparser.add_argument("--ssh-host", help="SSH host or alias for read-only Docker inspection")
+            subparser.add_argument("--container", help="Running API container name")
 
         if name == "retry":
             subparser.add_argument("--stage", choices=("release", "web", "play"), default="release")
@@ -1152,13 +1222,22 @@ def main(argv=None, *, root=None):
                     else f"{options.component}: accepted {revision[:12]}"
                 )
             elif options.command == "verify":
+                target = None
+                supplied = (options.server_url, options.ssh_host, options.container)
+
+                if any(supplied):
+                    if not all(supplied):
+                        raise ReleaseError("Provide --server-url, --ssh-host, and --container together")
+
+                    target = {"url": options.server_url, "ssh_host": options.ssh_host, "container": options.container}
+
                 with activity("Checking published release", enabled=not options.json):
-                    manager.verify(plan, options.component, options.revision, options.evidence)
+                    manager.verify(plan, options.component, options.revision, options.evidence, target=target)
 
                 print(
                     json.dumps({"verified": options.component})
                     if options.json
-                    else f"{options.component}: verification recorded"
+                    else f"{options.component}: deployment checks passed"
                 )
             elif options.command == "retry":
                 with activity("Checking release retry", enabled=not options.json):
@@ -1171,7 +1250,7 @@ def main(argv=None, *, root=None):
                 )
 
         return 0
-    except (ReleaseError, OSError, ValueError, KeyError, StopIteration, subprocess.TimeoutExpired) as error:
+    except (ReleaseError, DeploymentError, OSError, ValueError, KeyError, StopIteration, subprocess.TimeoutExpired) as error:
         print(f"release: {error}", file=sys.stderr)
         return 1
 

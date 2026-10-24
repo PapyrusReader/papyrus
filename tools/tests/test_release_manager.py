@@ -242,6 +242,11 @@ class ReleaseManagerTest(unittest.TestCase):
         self.advance(plan, merge=True)
         return self.publish(plan, "server")
 
+    def healthy_server(self, revision):
+        probe = patch.object(self.manager, "check_server_deployment", return_value={"revision": revision})
+        self.addCleanup(probe.stop)
+        return probe.start()
+
     def test_plan_and_dry_run_do_not_write_remotes_or_checkouts(self):
         before = {name: git(self.manager.path(name), "status", "--porcelain") for name in self.remotes}
         plan = self.plan()
@@ -286,6 +291,7 @@ class ReleaseManagerTest(unittest.TestCase):
         plan = self.plan()
         server_revision = self.promote_server(plan)
         self.assertEqual(self.status(plan)["client"]["stage"], "waiting")
+        self.healthy_server(server_revision)
         self.manager.verify(plan, "server", server_revision, "Deployed image digest and API health verified")
         self.advance(plan)
         self.advance(plan, merge=True)
@@ -330,6 +336,7 @@ class ReleaseManagerTest(unittest.TestCase):
         plan = self.manager.create_plan("1.0.0", 1, "papyrus")
         revision = self.publish(plan, "server")
         self.publish(plan, "client")
+        self.healthy_server(revision)
         self.manager.verify(plan, "server", revision, "verified running digest")
         observations, actions = self.advance(plan, merge=True)
         self.assertTrue(all(item["stage"] == "complete" for item in observations.values()))
@@ -438,8 +445,59 @@ class ReleaseManagerTest(unittest.TestCase):
         with self.assertRaises(release.ReleaseError):
             self.manager.verify(plan, "server", "a" * 40, "evidence")
 
+        with self.assertRaisesRegex(release.ReleaseError, "Notes cannot override"):
+            self.manager.verify(plan, "server", revision, "what")
+
+        self.healthy_server(revision)
         self.manager.verify(plan, "server", revision, "evidence")
         self.assertEqual(self.status(plan)["server"]["stage"], "verified")
+
+    def test_placeholder_attestation_cannot_complete_an_already_synchronized_release(self):
+        plan = self.manager.create_plan("1.0.0", 1, "papyrus")
+        revision = self.publish(plan, "server")
+        self.publish(plan, "client")
+        plan["components"]["server"]["verification"] = {"revision": revision, "evidence": "what"}
+        observations, actions = self.advance(plan, merge=True)
+        self.assertEqual(observations["server"]["stage"], "published")
+        self.assertIn("live deployment check required", observations["server"]["detail"])
+        self.assertEqual(observations["workspace"]["stage"], "waiting")
+        self.assertEqual(actions, [])
+        self.assertEqual(self.github.calls, [])
+
+    def test_previous_success_is_rechecked_and_live_failure_prevents_completion(self):
+        plan = self.manager.create_plan("1.0.0", 1, "papyrus")
+        revision = self.publish(plan, "server")
+        self.publish(plan, "client")
+        probe = self.healthy_server(revision)
+        self.manager.verify(plan, "server", revision, "checked")
+        self.assertTrue(all(item["stage"] == "complete" for item in self.status(plan).values()))
+        probe.side_effect = release.DeploymentError("live API is 0.0.3, expected 1.0.0")
+        self.manager.save(plan)
+        reloaded = self.manager.load(plan["id"])
+        observations, actions = self.advance(reloaded, merge=True)
+        self.assertEqual(observations["server"]["stage"], "published")
+        self.assertIn("live API is 0.0.3", observations["server"]["detail"])
+        self.assertEqual(actions, [])
+
+        from release_catalog import Catalog
+
+        record = {**reloaded, "plan": reloaded, "source": "local", "updated": "2026-10-24"}
+
+        with patch.object(Catalog, "discover", return_value={plan["id"]: record}):
+            rows = Catalog(self.manager).list("papyrus")
+
+        self.assertEqual(len(rows), 1)
+        self.assertNotEqual(rows[0]["status"], "complete")
+        self.assertEqual(rows[0]["components"][0]["stage"], "published")
+
+    def test_notes_cannot_override_failed_delivery(self):
+        plan = self.manager.create_plan("1.0.0", None, "website")
+        revision = self.publish(plan, "website", success=False)
+        plan["components"]["website"]["verification"] = {"revision": revision, "evidence": "verified"}
+        self.assertEqual(self.status(plan)["website"]["stage"], "published")
+
+        with self.assertRaisesRegex(release.ReleaseError, "Notes cannot override"):
+            self.manager.verify(plan, "website", revision, "what")
 
     def test_existing_tag_cannot_hide_a_different_promotion(self):
         plan = self.plan()

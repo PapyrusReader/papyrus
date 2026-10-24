@@ -60,26 +60,41 @@ JSON output includes the same next instruction in `next` and a `dry_run` flag.
 The component stages are `planned`, `prepare`, `prepared`, `promote`, `publishing`,
 `published`, and `verified`. `waiting` and `blocked` explain unmet prerequisites.
 Once components and the workspace snapshot are verified, `sync` brings release
-history back into development and `complete` means that history is present.
+history back into development. `complete` requires that history, verified delivery,
+and a fresh successful server deployment check.
 Synchronization uses a PR when ancestry requires it, preserving protected-branch
 review. Already synchronized repositories do not get another PR.
 
-Server publication does not deploy the server. Deploy and verify the exact image
-using the existing server deployment procedure, then record that evidence:
+Server publication does not deploy the server. Deploy the exact image and migrations
+using the existing server deployment procedure, then configure the read-only check:
 
 ```sh
 tools/papyrus release verify 0.0.5 --component server \
   --revision FULL_RELEASE_COMMIT_SHA \
-  --evidence 'Deployed image digest sha256:...; API health and migrations verified'
+  --server-url https://api.papyrus-reader.com \
+  --ssh-host hetzner --container papyrus-production-api-1
 ```
 
-This is an operator attestation, not an automatic deployment check. It must name
-the published tag's exact commit. Client promotion waits for server verification.
+Use the SSH alias and API container for your deployment. The checker requires
+HTTPS and read-only SSH access to Docker. It checks public API health and version,
+container health, image revision and published digest, installed package version,
+and the database migration heads from the released source. It never deploys or
+runs migrations. SSH commands use batch mode and bounded timeouts.
+
+The target is saved locally in ignored `.local/release-deployment.json`, even if
+verification fails, so the next status check can explain the actual mismatch.
+It is not archived or copied into PRs. `status`, `list`, and `advance` repeat the
+live checks. Missing configuration, failed checks, and unreachable production
+leave the server `published`, prevent completion, and block client promotion.
+An older release that is no longer deployed is also reported as `published`.
+Existing free-text attestations never count as deployment proof. `--evidence`
+is an optional note saved only after checks pass and cannot override their result.
+
 Client and website delivery are verified automatically only when the release
 workflow and its actual delivery verification steps succeeded. A successful run
-with skipped delivery jobs is insufficient. `verify` can also record independent
-client or website delivery evidence, including verification after a delivery-only
-retry. Do not include credentials in evidence, which is archived with the release.
+with skipped delivery jobs is insufficient. `verify` can record a note only after
+those checks pass. Do not include credentials in notes, which are archived with
+the release.
 
 ```sh
 tools/papyrus release retry 0.0.5 --component client --stage web
@@ -92,7 +107,8 @@ tag, without rebuilding assets. `--stage release` reruns failed jobs belonging t
 the release commit. When no run exists, it can dispatch a release workflow only
 if that exact commit is still master. Delivery-only runs are not automatically
 attributed to a release because GitHub's run listing does not expose dispatch
-inputs. Inspect the retry and record delivery evidence with `verify`.
+inputs. A delivery-only retry alone does not clear the release gate. Rerun the
+failed jobs of the original release workflow so its verification steps pass.
 
 Preparation happens in temporary detached worktrees. Existing checkouts, dirty
 files, and submodule revisions are preserved. Repeating commands reuses the same
