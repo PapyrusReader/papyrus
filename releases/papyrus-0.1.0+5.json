@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "papyrus-0.1.0+5",
+  "version": "0.1.0",
+  "build": 5,
+  "components": {
+    "server": {
+      "repo": "PapyrusReader/server",
+      "source": "b3553b1e36cbf3f32b9da1a3f361f7f3421274e7",
+      "accepted_development": "b3553b1e36cbf3f32b9da1a3f361f7f3421274e7",
+      "tag": "v0.1.0",
+      "prs": {
+        "prepare": 45,
+        "promote": 46
+      },
+      "prepared_head": "cd549e3d1c5721c5731fb1e10d54c02a688aa651",
+      "promotion_head": "1276fd1350a6f6c1f8fa7152df2f030182678207",
+      "verification": {
+        "revision": "2bde92f0ebeadb59be9727874cfe02bb017c4ac3",
+        "evidence": "what",
+        "recorded_at": "2026-10-24T17:26:03.518017+00:00"
+      }
+    },
+    "client": {
+      "repo": "PapyrusReader/client",
+      "source": "9eb62699753faf4a6f88308290d70f70e2e5e478",
+      "accepted_development": "9eb62699753faf4a6f88308290d70f70e2e5e478",
+      "tag": "v0.1.0+5",
+      "prs": {
+        "prepare": 88,
+        "promote": 89
+      },
+      "prepared_head": "a9e35a8aed43697c24ba52f672f51c46b6bad5b5",
+      "promotion_head": "70bad936c5373a55c98b250f1075f1f2db530b12"
+    },
+    "workspace": {
+      "repo": "PapyrusReader/papyrus",
+      "source": "de75c7e15a473d5df1aca7f9a4f1c947a619536e",
+      "accepted_development": "de75c7e15a473d5df1aca7f9a4f1c947a619536e",
+      "tag": null,
+      "prs": {}
+    }
+  }
+}
