@@ -42,6 +42,20 @@
       }
     },
     {
+      "label": "Website",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/website"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
       "label": "Storage",
       "type": "shell",
       "command": "docker compose up database mailpit powersync-storage powersync",
