@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "papyrus-0.2.0+6",
+  "version": "0.2.0",
+  "build": 6,
+  "components": {
+    "server": {
+      "repo": "PapyrusReader/server",
+      "source": "1bd37b396780e7abf2038a70560bacf832cf5761",
+      "accepted_development": "1bd37b396780e7abf2038a70560bacf832cf5761",
+      "tag": "v0.2.0",
+      "prs": {
+        "prepare": 51,
+        "promote": 52
+      },
+      "prepared_head": "244e630dc5b81d3df3e91ca5f37a5178be8b3423",
+      "promotion_head": "8386e18d935529390db8493b067f60c5652f919b",
+      "verification": {
+        "revision": "a521066649a7745545c796aa0e04d20be1dccf63",
+        "evidence": "Published image deployed with migration b9c0d1e2f345. All 25 existing table fingerprints preserved. Encrypted off-host backup restored successfully. API and PowerSync containers healthy.",
+        "recorded_at": "2026-10-26T21:58:53.289982+00:00",
+        "method": "live"
+      }
+    },
+    "client": {
+      "repo": "PapyrusReader/client",
+      "source": "c58c339838b50ef4d312f5305f8d127dec01f324",
+      "accepted_development": "c58c339838b50ef4d312f5305f8d127dec01f324",
+      "tag": "v0.2.0+6",
+      "prs": {
+        "prepare": 96,
+        "promote": 97
+      },
+      "prepared_head": "75fcf48373a6168d7a0f7bcf072f42cad5cf95c7",
+      "promotion_head": "1b51b443a7db1d03b857f486c654e65c5ad31422"
+    },
+    "workspace": {
+      "repo": "PapyrusReader/papyrus",
+      "source": "0eaa6c7f8a2d56031399a31e5c257ec0d7db76a7",
+      "accepted_development": "0eaa6c7f8a2d56031399a31e5c257ec0d7db76a7",
+      "tag": null,
+      "prs": {}
+    }
+  }
+}
