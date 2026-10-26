@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 loader = importlib.machinery.SourceFileLoader(
     "papyrus_cli", str(Path(__file__).resolve().parents[1] / "papyrus")
@@ -44,6 +44,18 @@ class WorkspaceCommandsTest(unittest.TestCase):
         test.assert_called_once_with(
             "client",
             ["test/auth/token_store_test.dart", "--plain-name", "refresh token"],
+        )
+
+    def test_release_dispatch_preserves_arguments_without_command_echo(self):
+        manager = Mock()
+        manager.main.return_value = 2
+
+        with patch.dict("sys.modules", {"release_manager": manager}):
+            result = cli.main(["release", "advance", "0.0.5", "--dry-run"])
+
+        self.assertEqual(result, 2)
+        manager.main.assert_called_once_with(
+            ["advance", "0.0.5", "--dry-run"], root=cli.ROOT
         )
 
     def test_commands_preserve_arguments_without_shell_interpretation(self):
