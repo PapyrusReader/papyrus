@@ -6,7 +6,10 @@ on:
       - 'tools/**'
       - '.vscode/setup.sh'
       - '.github/workflows/tooling.yml'
+      - '.github/workflows/releases.yml'
+      - 'release.json'
       - 'client'
+      - 'server'
       - 'reader'
       - '.gitmodules'
   pull_request:

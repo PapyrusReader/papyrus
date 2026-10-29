@@ -60,7 +60,14 @@ def checks(component):
                 ],
                 CLIENT,
             ),
-            (["node", "--test", "test/web/flutter_bootstrap_test.cjs"], CLIENT),
+            (
+                [
+                    "node",
+                    "--test",
+                    *sorted(str(path.relative_to(CLIENT)) for path in (CLIENT / "test/web").glob("*.cjs")),
+                ],
+                CLIENT,
+            ),
         ]
     if component == "server":
         return [
