@@ -87,7 +87,7 @@ def groups(runs):
 def markdown(runs):
     lines = [
         "### CI timing", "",
-        "Successful runs only. Elapsed spans first job start to last job completion, excluding the initial queue.",
+        "Each row measures only the displayed run attempt. Successful runs only. Elapsed spans first job start to last job completion, excluding the initial queue.",
         "Runner time sums job durations, including parallel jobs. It is unweighted time, not billed minutes.",
         "Medians are grouped by workflow, branch, event, job names and runner labels. Cache and runner-image differences may still affect comparisons.",
         "", "| Run | Branch | Event | Attempt | Elapsed (s) | Runner (s) |",
