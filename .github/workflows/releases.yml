@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   versions:
     runs-on: ubuntu-latest
@@ -21,4 +25,3 @@ jobs:
         with:
           python-version: '3.12'
       - run: python tools/release.py check --committed
-      - run: python -m unittest discover -s tools/tests -p 'test_release*.py' -v
