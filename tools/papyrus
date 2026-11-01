@@ -60,7 +60,14 @@ def checks(component):
                 ],
                 CLIENT,
             ),
-            (["node", "--test", "test/web/flutter_bootstrap_test.cjs"], CLIENT),
+            (
+                [
+                    "node",
+                    "--test",
+                    *sorted(str(path.relative_to(CLIENT)) for path in (CLIENT / "test/web").glob("*.cjs")),
+                ],
+                CLIENT,
+            ),
         ]
     if component == "server":
         return [
@@ -229,6 +236,11 @@ def doctor():
 def main(argv=None):
     arguments = sys.argv[1:] if argv is None else argv
 
+    if arguments and arguments[0] == "ci-timing":
+        from ci_timing import main as timing_main
+
+        return timing_main(arguments[1:])
+
     if arguments and arguments[0] == "release":
         from release_manager import main as release_main
 
@@ -236,6 +248,7 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("ci-timing", help="Compare CI elapsed and aggregate runner time")
     commands.add_parser("release", help="Prepare, inspect, and advance releases")
     commands.add_parser("doctor", help="Inspect tools and repos without changing them")
     commands.add_parser("sdk", help="Install/link the Flutter version in .fvmrc")
