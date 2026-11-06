@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "papyrus-0.4.0+8",
+  "version": "0.4.0",
+  "build": 8,
+  "components": {
+    "server": {
+      "repo": "PapyrusReader/server",
+      "source": "e42e229478b606ebcae1117a5382ac9c459d6ff9",
+      "accepted_development": "e42e229478b606ebcae1117a5382ac9c459d6ff9",
+      "tag": "v0.4.0",
+      "prs": {
+        "prepare": 64,
+        "promote": 65
+      },
+      "prepared_head": "d6435a1df0dd7a4634d65953926b97811a31624b",
+      "promotion_head": "8bc333eafd65238e4b9ab37b816cd50c9d78ea09",
+      "verification": {
+        "revision": "883ba778482e2b8a8d55cf006252270cb9f8638d",
+        "evidence": "Encrypted off-host backup restored in isolated PostgreSQL 17. Existing database table fingerprints and media hashes preserved. Timer publication and SELECT grants verified. Public API and PowerSync liveness/readiness passed.",
+        "recorded_at": "2026-11-06T16:14:38.698417+00:00",
+        "method": "live"
+      }
+    },
+    "client": {
+      "repo": "PapyrusReader/client",
+      "source": "6c4106fb452c865c955d29c193c393589ade906d",
+      "accepted_development": "6c4106fb452c865c955d29c193c393589ade906d",
+      "tag": "v0.4.0+8",
+      "prs": {
+        "prepare": 129,
+        "promote": 130
+      },
+      "prepared_head": "abfd510c99a1299789aa9df36cbae3211142651d",
+      "promotion_head": "b3ae6f281824843404c6d13ed626bb8ec1c27241"
+    },
+    "workspace": {
+      "repo": "PapyrusReader/papyrus",
+      "source": "c01c6b2475485f539909656faff418d6a8fac326",
+      "accepted_development": "c01c6b2475485f539909656faff418d6a8fac326",
+      "tag": null,
+      "prs": {}
+    }
+  }
+}
