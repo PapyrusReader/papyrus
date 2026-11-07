@@ -5,7 +5,7 @@ description: Coordinate or review Papyrus client/server changes to auth, PowerSy
 
 Use for changes that cross the client/server boundary. Find the Papyrus workspace
 by ascending to `.fvmrc` and `tools/papyrus`; read the affected component AGENTS.md.
-Read [contract map](references/contract-map.md) for exact code and test locations.
+Read [contract map](references/CONTRACT_MAP.md) for exact code and test locations.
 Check only the contract involved in the request.
 
 For a synced field, follow the full round trip: Dart model and mapper -> SQLite

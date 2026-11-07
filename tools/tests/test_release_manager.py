@@ -273,6 +273,18 @@ class ReleaseManagerTest(unittest.TestCase):
         self.assertIn('name = "papyrus-server"\nversion = "1.0.1"', lock)
         self.assertIn('name = "dependency"\nversion = "1.0.0"', lock)
 
+    def test_mutations_require_a_local_plan(self):
+        plan = self.plan()
+        archived = self.root / "releases" / f"{plan['id']}.json"
+        archived.parent.mkdir()
+        (self.manager.storage / archived.name).rename(archived)
+
+        with self.assertRaisesRegex(release.ReleaseError, "Release not found"):
+            self.manager.load(plan["id"])
+
+        self.manager.save(plan)
+        self.assertEqual(self.manager.load(plan["id"]), plan)
+
     def test_interruption_after_push_recovers_existing_branch(self):
         plan = self.plan()
         self.github.fail_create = True
@@ -313,7 +325,11 @@ class ReleaseManagerTest(unittest.TestCase):
         self.assertTrue(all(item["stage"] == "complete" for item in statuses.values()), statuses)
         self.assertEqual(git(self.remotes["workspace"], "ls-tree", "master", "client").split()[2], client_revision)
         self.assertEqual(git(self.remotes["workspace"], "ls-tree", "master", "server").split()[2], server_revision)
-        self.assertTrue(read_remote(self, "workspace", "master", f"releases/{plan['id']}.json"))
+        self.assertEqual(
+            json.loads(read_remote(self, "workspace", "master", "release.json")),
+            {"version": plan["version"], "android_build_number": plan["build"]},
+        )
+        self.assertEqual(git(self.remotes["workspace"], "ls-tree", "master", "releases"), "")
         before = list(self.github.calls)
         self.advance(plan, merge=True)
         self.assertEqual(self.github.calls, before)

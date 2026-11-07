@@ -6,10 +6,6 @@ independent. Matching versions identify a release; they do not mean an old clien
 must stop working when the server advances. Keep `/v1` backwards compatible and
 deploy additive server changes before distributing a client that needs them.
 
-For the initial internal test, the coordinated version is `0.0.1`, Android build
-`1`. This marks an early testing release. No reader version or reader implementation
-is changed by this policy.
-
 ## Integrate changes
 
 `development` is the long-lived default branch in every repository. Ordinary
@@ -148,8 +144,8 @@ tools/papyrus release status papyrus-0.0.4+4
 ```
 
 `list` refreshes status from GitHub and prints a compact table with one row per
-release, an overall status, and the component states. It combines local plans,
-archived plans, and GitHub releases, showing the newest 20 by publication time or
+release, an overall status, and the component states. It combines local plans
+and GitHub releases, showing the newest 20 by publication time or
 saved-plan modification time. `--limit` changes the row count. A saved plan takes
 precedence over a discovered release with the same ID. In-progress plans use the
 same live state checks as `status`.
@@ -173,10 +169,11 @@ against overlapping local commands. Keep this directory to resume an in-progress
 release, or copy its JSON plan to the same location in another checkout. Do not
 run two machines against the same release concurrently. Status is derived from
 Git refs, PRs, tags, and workflow results each time, rather than a saved stage.
-A coordinated release archives its plan in `releases/<release-id>.json` as part of
-the workspace snapshot PR. Archived plans can also be inspected from a checkout
-containing that file. Standalone website plans remain in `.local/releases`.
-The workspace snapshot updates only client/server gitlinks and release metadata.
+Plans remain local for coordinated and standalone website releases. The workspace
+snapshot records component gitlinks and `release.json`; it does not commit plans
+or release-note copies. GitHub releases and PRs hold publication notes and delivery
+evidence. A fresh checkout discovers published releases from GitHub; resuming
+release mutations requires the original local plan.
 
 The lower-level `tools/release.py check` and `bump` commands remain available for
 manual workflows and CI.
@@ -184,7 +181,8 @@ manual workflows and CI.
 ## Prepare a release manually
 
 From the workspace root, on clean release-preparation branches based on
-`development` in the workspace, client and server:
+`development` in the workspace, client and server. The version numbers below are
+illustrative; choose the next release's version and an increasing Android code:
 
 ```sh
 python3 tools/release.py check

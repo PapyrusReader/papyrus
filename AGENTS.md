@@ -29,6 +29,10 @@ spacing, branching, and multiline layout rules to changed code. Component
 `AGENTS.md` files summarize the applicable rules for standalone checkouts. Keep
 changes scoped; do not reformat unrelated code.
 
+Name Markdown documentation with uppercase basenames and underscores between words,
+for example `INSTALL.md` and `WINDOWS_TESTING.md`. Keep `.rst` filenames unchanged
+because they define published Sphinx URLs and requirement source paths.
+
 ## Branches and releases
 
 `development` is the default integration branch in the workspace and component
