@@ -282,12 +282,11 @@ class Manager:
 
         records = {}
 
-        for directory in (self.root / "releases", self.storage):
-            for path in directory.glob("*.json"):
-                plan = json.loads(path.read_text())
+        for path in self.storage.glob("*.json"):
+            plan = json.loads(path.read_text())
 
-                if selector in (plan["id"], plan["version"], plan["id"].removeprefix("papyrus-")):
-                    records[plan["id"]] = plan
+            if selector in (plan["id"], plan["version"], plan["id"].removeprefix("papyrus-")):
+                records[plan["id"]] = plan
 
         if len(records) != 1:
             raise ReleaseError("Release not found or ambiguous. Use release list or release plan.")
@@ -778,12 +777,6 @@ class Manager:
                         )
                         + "\n"
                     }
-                    archive = json.loads(json.dumps(plan))
-                    workspace = archive["components"]["workspace"]
-                    workspace["prs"] = {}
-                    workspace.pop("prepared_head", None)
-                    workspace.pop("promotion_head", None)
-                    files[f"releases/{plan['id']}.json"] = json.dumps(archive, indent=2) + "\n"
 
                     for child, revision in revisions.items():
                         git(worktree, "update-index", "--add", "--cacheinfo", "160000", revision, child)

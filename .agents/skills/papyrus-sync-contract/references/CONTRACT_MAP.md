@@ -12,7 +12,7 @@ changing a contract; this map identifies owners rather than freezing field lists
 | Replication projection | `client/app/lib/powersync/papyrus_schema.dart` | `server/powersync/sync-config.yaml`, `scripts/setup_local_powersync.sh` |
 | Profiles and repository watches | `client/app/lib/powersync/{powersync_service,sync_profile_switch_queue}.dart`, `lib/data/data_store.dart` | JWT user identity and row ownership predicates |
 | Media upload/cache | `client/app/lib/media/`, `lib/services/book_download_service*` | `server/papyrus/api/routes/media.py`, `services/media.py`, `schemas/media.py` |
-| OPDS relay | `client/app/lib/opds/opds_http_client.dart` | `server/papyrus/api/routes/opds.py`, `services/opds.py`, `schemas/opds.py`, `docs/opds-relay.md` |
+| OPDS relay | `client/app/lib/opds/opds_http_client.dart` | `server/papyrus/api/routes/opds.py`, `services/opds.py`, `schemas/opds.py` |
 | Managed acquisition | `client/app/lib/acquisition/`, `lib/providers/acquisition_downloads_provider.dart` | `server/papyrus/api/routes/acquisition.py`, `services/acquisition.py`, `services/acquisition_monitor.py` |
 
 ## Useful existing regressions

@@ -66,8 +66,7 @@ class CatalogTest(unittest.TestCase):
         self.manager.save.assert_not_called()
         self.assertFalse(self.manager.storage.exists())
 
-    def test_local_plan_overrides_archive_and_github_without_duplicate_rows(self):
-        self.save("website-1.1.7", self.root / "releases", verification="old")
+    def test_local_plan_overrides_github_without_duplicate_rows(self):
         plan = self.save("website-1.1.7", verification="current")
         self.publications["website"] = [publication("v1.1.7")]
         self.manager.status.return_value = {"website": step("website", "complete")}
@@ -77,6 +76,16 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(rows[0]["source"], "local")
         self.manager.status.assert_called_once_with(plan)
         self.manager.publication.assert_not_called()
+
+    def test_old_archive_does_not_override_github_discovery(self):
+        self.save("website-1.1.7", self.root / "releases", verification="old")
+        self.publications["website"] = [publication("v1.1.7")]
+        rows = self.catalog.list()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["source"], "github")
+        self.assertEqual(rows[0]["status"], "verified")
+        self.manager.status.assert_not_called()
+        self.manager.save.assert_not_called()
 
     def test_missing_server_is_distinct_from_discovery_failure(self):
         self.publications["client"] = [publication("v0.0.4+4")]
