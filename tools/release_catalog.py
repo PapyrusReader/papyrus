@@ -63,15 +63,14 @@ class Catalog:
     def saved(self):
         records = {}
 
-        for directory, source in ((self.manager.root / "releases", "archive"), (self.manager.storage, "local")):
-            for path in directory.glob("*.json"):
-                plan = json.loads(path.read_text())
-                records[plan["id"]] = {
-                    **plan,
-                    "plan": plan,
-                    "source": source,
-                    "updated": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
-                }
+        for path in self.manager.storage.glob("*.json"):
+            plan = json.loads(path.read_text())
+            records[plan["id"]] = {
+                **plan,
+                "plan": plan,
+                "source": "local",
+                "updated": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+            }
 
         return records
 

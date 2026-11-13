@@ -86,12 +86,12 @@ def checks(component):
                     "lib",
                     "test",
                     "tool",
+                    "bin",
                     "example/lib",
                     "example/test",
                 ],
                 READER,
             ),
-            (["bash", "tool/build_epub_worker.sh", "--check"], READER),
             ([sdk_command("flutter"), "analyze", "--no-pub"], READER),
             ([sdk_command("flutter"), "analyze", "--no-pub"], READER / "example"),
         ]

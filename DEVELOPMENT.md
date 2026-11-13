@@ -8,7 +8,7 @@ describe current behavior.
 
 ## Setup
 
-The workspace uses Flutter **3.41.2 / Dart 3.11.0**, matching client CI and release
+The workspace uses Flutter **3.47.9 / Dart 3.13.7**, matching client CI and release
 workflows. FVM installs that SDK separately from the machine's global Flutter.
 Keep `.fvmrc` and the workflow version pins aligned when upgrading deliberately.
 
@@ -70,9 +70,9 @@ directory. All subprocesses use the appropriate component directory.
 | `tools/papyrus deps client` | Install client dependencies with its committed lock |
 | `tools/papyrus deps reader` | Install reader dependencies with its committed lock |
 | `tools/papyrus deps server` | Install server/dev dependencies with the uv lock |
-| `tools/papyrus check client` | Non-writing Dart format check, Flutter analysis, four web-bootstrap tests |
+| `tools/papyrus check client` | Non-writing Dart format check, Flutter analysis, web bootstrap and worker tests |
 | `tools/papyrus check server` | Ruff lint, Ruff format check, strict Mypy |
-| `tools/papyrus check reader` | Formatting, worker asset drift, library and example analysis |
+| `tools/papyrus check reader` | Formatting, library and example analysis |
 | `tools/papyrus check references` | Match committed workspace reader and client dependency revisions |
 | `tools/papyrus check tooling` | CLI regression tests and ShellCheck |
 | `tools/papyrus check all` | Tooling, reference consistency, client, reader and server; reports independent failures |
@@ -87,7 +87,22 @@ Use `tools/flutter` and `tools/dart` when a command is not covered by the CLI. T
 wrappers fail if the pinned SDK is missing. They do not silently use global Flutter.
 Reader `deps`, `check`, and `test` commands also use the pinned SDK and committed
 lockfile. Run the reader browser suite after UI, layout, focus, or worker changes
-as described in `reader/docs/validation.md`.
+as described in `reader/docs/VALIDATION.md`.
+
+Native timer XCTest needs the synthetic notification host so the production
+provider does not clear its test sessions. On an isolated iOS simulator, from
+`client/app/ios`:
+
+```sh
+xcodebuild test -workspace Runner.xcworkspace -scheme Runner \
+  -destination 'platform=iOS Simulator,name=YOUR_TEST_SIMULATOR' \
+  -only-testing:RunnerTests -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO \
+  FLUTTER_TARGET=integration_test/support/timer_notification_app.dart
+```
+
+For Android notification actions after backgrounding or process termination, run
+that same host from `client/app` with
+`../../tools/flutter run -t integration_test/support/timer_notification_app.dart`.
 
 Website checks use `npm ci && npm run build` in `website/`. Documentation checks
 use `uv sync --locked --extra dev && make build` in `docs/` (Graphviz required).
