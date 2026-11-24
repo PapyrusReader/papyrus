@@ -13,7 +13,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from release import version_tuple
-from release_deployment import DeploymentError, migration_heads, validate_target, verify_server
+from release_deployment import (
+    DeploymentError,
+    ServerVersionMismatch,
+    migration_heads,
+    published_image,
+    validate_target,
+    verify_server,
+)
 from release_progress import activity, command_label, update
 
 PR_FIELDS = (
@@ -24,6 +31,10 @@ COMPONENTS = ("server", "client", "website", "workspace")
 
 
 class ReleaseError(RuntimeError):
+    pass
+
+
+class ReleaseChanged(ReleaseError):
     pass
 
 
@@ -177,16 +188,22 @@ class GitHub:
         return self.data("pr", "view", number, "--repo", repo, "--json", PR_FIELDS)
 
     def merge_blocker(self, repo, pr):
+        return self.merge_gate(repo, pr)[1]
+
+    def merge_gate(self, repo, pr):
         if pr["isDraft"]:
-            return "draft PR (mark ready)"
+            return "draft", "draft PR (mark ready)"
 
         if pr["reviewDecision"] == "CHANGES_REQUESTED":
-            return "changes requested (address review feedback)"
+            return "review_changes", "changes requested (address review feedback)"
+
+        if pr["mergeStateStatus"] == "DIRTY":
+            return "conflicts", "merge conflicts (resolve on the PR branch)"
 
         checks = pr["statusCheckRollup"] or []
 
         if not checks:
-            return "CI checks not reported yet"
+            return "ci_pending", "CI checks not reported yet"
 
         failed = []
         pending = []
@@ -200,10 +217,10 @@ class GitHub:
             elif result not in ("SUCCESS", "NEUTRAL", "SKIPPED"):
                 pending.append(name)
 
-        for names, label in ((failed, "CI failed"), (pending, "CI running")):
+        for names, kind, label in ((failed, "ci_failed", "CI failed"), (pending, "ci_pending", "CI running")):
             if names:
                 extra = f" (+{len(names) - 2})" if len(names) > 2 else ""
-                return f"{label}: {', '.join(names[:2])}{extra}"
+                return kind, f"{label}: {', '.join(names[:2])}{extra}"
 
         owner, name = repo.split("/")
         query = """query($owner:String!,$name:String!,$number:Int!,$endCursor:String) {
@@ -233,21 +250,26 @@ class GitHub:
             for page in pages
             for thread in page["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
         ):
-            return "unresolved review threads"
+            return "review_threads", "unresolved review threads"
 
         if pr["mergeStateStatus"] != "CLEAN":
             reasons = {
-                "DIRTY": "merge conflicts (resolve on the PR branch)",
-                "BEHIND": "PR branch is behind its base (update branch)",
-                "UNKNOWN": "GitHub is checking mergeability (retry status)",
-                "BLOCKED": "GitHub blocks merge (check PR requirements)",
+                "BEHIND": ("behind", "PR branch is behind its base (update branch)"),
+                "UNKNOWN": ("mergeability_pending", "GitHub is checking mergeability (retry status)"),
+                "BLOCKED": ("merge_blocked", "GitHub blocks merge (check PR requirements)"),
             }
-            return reasons.get(pr["mergeStateStatus"], f"GitHub merge state: {pr['mergeStateStatus'].lower()}")
+
+            if pr["mergeStateStatus"] == "BLOCKED" and pr["reviewDecision"] == "REVIEW_REQUIRED":
+                return "review_pending", "GitHub blocks merge (review required)"
+
+            return reasons.get(
+                pr["mergeStateStatus"], ("merge_blocked", f"GitHub merge state: {pr['mergeStateStatus'].lower()}")
+            )
 
         # REVIEW_REQUIRED describes review policy even when GitHub exempts this
         # actor. CLEAN is the effective merge state. GitHub still enforces the
         # normal merge request, without --admin or local author-based exceptions.
-        return None
+        return None, None
 
 
 class Manager:
@@ -258,14 +280,14 @@ class Manager:
         self.fetched = set()
 
     @contextlib.contextmanager
-    def lock(self):
+    def lock(self, name="manager", *, blocking=False):
         self.storage.mkdir(parents=True, exist_ok=True)
 
-        with (self.storage / "manager.lock").open("a") as handle:
+        with (self.storage / f"{name}.lock").open("a") as handle:
             try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(handle, fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
-                raise ReleaseError("Another release command is running") from error
+                raise ReleaseChanged(f"Another release {name} is running") from error
 
             yield
 
@@ -415,7 +437,7 @@ class Manager:
         if pr["headRefOid"] != expected:
             return step(name, "blocked", f"{stage} head changed: {link}")
 
-        blocker = self.github.merge_blocker(plan["components"][name]["repo"], pr)
+        gate, blocker = self.github.merge_gate(plan["components"][name]["repo"], pr)
         return step(
             name,
             stage,
@@ -425,6 +447,7 @@ class Manager:
             head=expected,
             base=pr["baseRefOid"],
             blocker=blocker,
+            gate=gate,
         )
 
     def publication(self, plan, name, revision):
@@ -448,7 +471,7 @@ class Manager:
             "--limit",
             "100",
             "--json",
-            "databaseId,status,conclusion,url,headSha",
+            "databaseId,status,conclusion,url,headSha,attempt",
         )
         run = runs[0] if runs else None
         published = self.github.api(f"repos/{component['repo']}/releases/tags/{component['tag']}", missing=True)
@@ -464,6 +487,11 @@ class Manager:
         if name == "server":
             try:
                 deployment = self.check_server_deployment(plan, revision)
+            except ServerVersionMismatch as error:
+                return step(
+                    name, "published", str(error), revision=revision, run=run, deployment_configured=True,
+                    live_version=error.actual,
+                )
             except (
                 DeploymentError, ReleaseError, OSError, ValueError, KeyError, SyntaxError, subprocess.TimeoutExpired
             ) as error:
@@ -504,17 +532,8 @@ class Manager:
         return step(name, "published", detail, revision=revision, run=run)
 
     def check_server_deployment(self, plan, revision):
-        target_path = self.root / ".local/release-deployment.json"
-
-        if not target_path.exists():
-            raise DeploymentError("live deployment check required (configure verify --server-url --ssh-host --container)")
-
-        target = json.loads(target_path.read_text())
-        validate_target(target)
-        component = plan["components"]["server"]
-        image_record = self.github.call(
-            "release", "download", component["tag"], "--repo", component["repo"], "--pattern", "image.txt", "--output", "-"
-        )
+        target = self.deployment_target()
+        image_record = self.server_image_record(plan)
         paths = git(self.path("server"), "ls-tree", "-r", "--name-only", revision, "alembic/versions").splitlines()
         migrations = migration_heads(
             read_file(self.path("server"), revision, path) for path in paths if path.endswith(".py")
@@ -523,6 +542,38 @@ class Manager:
         return verify_server(
             target, version=plan["version"], revision=revision, image_record=image_record, migrations=migrations
         )
+
+    def deployment_target(self):
+        target_path = self.root / ".local/release-deployment.json"
+
+        if not target_path.exists():
+            raise DeploymentError("live deployment check required (configure verify --server-url --ssh-host --container)")
+
+        target = json.loads(target_path.read_text())
+        validate_target(target)
+        return target
+
+    def server_image_record(self, plan):
+        component = plan["components"]["server"]
+        return self.github.call(
+            "release", "download", component["tag"], "--repo", component["repo"], "--pattern", "image.txt", "--output", "-"
+        )
+
+    def server_deployment_request(self, plan, item):
+        revision = item["revision"]
+        run = item.get("run") or {}
+
+        if run.get("headSha") != revision or run.get("conclusion") != "success":
+            raise ReleaseError("Server publication workflow has not succeeded for the release commit")
+
+        if self.revision("server", "origin/master") != revision:
+            raise ReleaseError("Server release is no longer the tip of master")
+
+        return {
+            "version": plan["version"],
+            "revision": revision,
+            "image": published_image(self.server_image_record(plan), plan["version"]),
+        }
 
     def component_step(self, plan, name):
         component = plan["components"][name]
@@ -832,7 +883,7 @@ class Manager:
             blocker = self.github.merge_blocker(component["repo"], pr)
 
             if blocker or pr["state"] != "OPEN" or pr["headRefOid"] != item["head"] or pr["baseRefOid"] != item["base"]:
-                raise ReleaseError(f"{name}: PR changed or blocked, refresh status")
+                raise ReleaseChanged(f"{name}: PR changed or blocked, refresh status")
 
             self.github.call(
                 "pr", "merge", item["pr"], "--repo", component["repo"], "--merge", "--match-head-commit", item["head"]
@@ -842,8 +893,10 @@ class Manager:
 
         return True
 
-    def advance(self, plan, *, merge=False, dry_run=False, prepare_only=False):
-        observations = self.status(plan)
+    def advance(self, plan, *, merge=False, dry_run=False, prepare_only=False, observations=None):
+        if observations is None:
+            observations = self.status(plan)
+
         performed = []
 
         for name, item in observations.items():
@@ -860,7 +913,7 @@ class Manager:
             current = self.status(plan)[name]
 
             if any(current.get(field) != item.get(field) for field in ("stage", "action", "head", "base", "revisions")):
-                raise ReleaseError(f"{name}: release changed, refresh status")
+                raise ReleaseChanged(f"{name}: release changed, refresh status")
 
             if self.execute(plan, current, merge):
                 stage = item["stage"] if item["action"] == "merge" else item["action"]
@@ -945,7 +998,7 @@ class Manager:
         }
         self.save(plan)
 
-    def retry(self, plan, name, stage):
+    def retry(self, plan, name, stage, *, expected_run=None):
         observations = self.observe(plan)
 
         if name not in observations or name == "workspace":
@@ -974,6 +1027,9 @@ class Manager:
             return
 
         run = item.get("run")
+
+        if expected_run is not None and run != expected_run:
+            raise ReleaseChanged(f"{name}: release workflow changed before retry")
 
         if not run and item["stage"] == "publishing" and self.revision(name, "origin/master") == item["revision"]:
             self.github.call("workflow", "run", "release.yml", "--repo", component["repo"], "--ref", "master")
@@ -1118,16 +1174,24 @@ def parser():
     listing.add_argument("--component", choices=("all", "papyrus", "website"), default="all")
     listing.add_argument("--limit", type=positive_integer, default=20, help="Maximum rows (default: 20)")
 
-    for name in ("status", "prepare", "advance", "accept-head", "verify", "retry"):
-        subparser = commands.add_parser(name)
+    for name in ("status", "prepare", "advance", "run", "accept-head", "verify", "retry"):
+        help_text = {"help": "Drive a saved release through verification and synchronization"} if name == "run" else {}
+        subparser = commands.add_parser(name, **help_text)
         subparser.add_argument("release")
         subparser.add_argument("--json", action="store_true")
 
-        if name in ("advance", "prepare"):
+        if name in ("advance", "prepare", "run"):
             subparser.add_argument("--dry-run", action="store_true")
 
-        if name == "advance":
-            subparser.add_argument("--merge", action="store_true", help="Merge eligible PRs in this step")
+        if name in ("advance", "run"):
+            subparser.add_argument("--merge", action="store_true", help="Merge eligible PRs")
+
+        if name == "run":
+            subparser.add_argument("--poll-seconds", type=positive_integer, default=30, help="Initial poll interval")
+            subparser.add_argument("--wait-timeout", type=positive_integer, metavar="SECONDS", help="Limit time waiting")
+            subparser.add_argument("--repair", action="store_true", help="Invoke Codex and open draft repair PRs")
+            subparser.add_argument("--deploy-server", type=remote_executable, metavar="PATH", help="Server-side SSH job")
+            subparser.add_argument("--notify-command", metavar="PATH", help="Send actionable alerts via a local executable")
 
         if name in ("accept-head", "verify", "retry"):
             subparser.add_argument("--component", choices=COMPONENTS, required=True)
@@ -1145,11 +1209,23 @@ def parser():
     return result
 
 
+def remote_executable(value):
+    if not re.fullmatch(r"/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+", value) or {".", ".."} & set(value.split("/")):
+        raise argparse.ArgumentTypeError("use an absolute executable path on the deployment host")
+
+    return value
+
+
 def main(argv=None, *, root=None):
     options = parser().parse_args(argv)
     manager = Manager(root or Path(__file__).resolve().parents[1])
 
     try:
+        if options.command == "run":
+            from release_runner import run_release
+
+            return run_release(manager, options)
+
         with manager.lock():
             if options.command == "list":
                 from release_catalog import Catalog, render_list

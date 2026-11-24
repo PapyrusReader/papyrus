@@ -53,6 +53,65 @@ Status names the pending or failed CI jobs and prints a compact `Next:` instruct
 Without `--merge`, dry-run output explains that ready PRs will remain open.
 JSON output includes the same next instruction in `next` and a `dry_run` flag.
 
+### Run a saved release to completion
+
+```sh
+tools/papyrus release run papyrus-0.0.5+5 --dry-run --merge
+tools/papyrus release run papyrus-0.0.5+5 --merge --repair
+tools/papyrus release run papyrus-0.0.5+5 --merge --repair \
+  --deploy-server /usr/local/bin/papyrus-release-server
+```
+
+`run` uses the same release plan and checks as `advance`. It advances eligible
+steps immediately and polls while checks, review, publication, or delivery are
+pending. It finishes after delivery verification and synchronization. Use the
+full release ID when multiple builds share a version. `--dry-run` takes one
+snapshot. `--poll-seconds` sets the initial interval (30 seconds by default),
+and `--wait-timeout` limits how long the runner waits. `--json` prints one JSON
+object per event. Exit codes are 0 for completion or preview, 1 for command
+errors, 2 for a blocker requiring intervention, and 3 for wait timeout.
+
+Use `--notify-command /path/to/notifier` to alert the release operator. The runner
+sends one JSON object on standard input with `release`, `state`, and `detail`.
+The command is called for failures, timeouts, and waits that need attention,
+including PR review and manual deployment. Routine CI and publication waits stay
+quiet. Successful alerts are recorded in the local release directory to suppress
+duplicates across polling and restarts. Delivery failures are logged separately
+from the release status. The Hetzner service uses the existing Papyrus monitoring
+SMTP sender and alert recipient. Dry runs suppress alerts.
+
+`--merge` authorizes eligible merges for that invocation. Without it the
+runner stops when a PR is ready to merge. GitHub review requirements still
+apply. A cancelled or timed-out release workflow is retried once for the same
+commit. A failed publication workflow is reported with the linked run.
+
+`--repair` uses an authenticated local `codex` CLI for a failed PR check or a
+reproduced merge conflict. It creates a disposable worktree at the recorded
+commit and opens a draft PR with the proposed repair. Mark the draft ready and
+review it through the normal PR workflow. Use a merge commit for conflict repairs
+that carry both branch histories. A repair that changes an accepted release head
+still needs `accept-head` after its scope is reviewed. The runner waits for the
+PR state to change and proposes one repair for each observed PR/head/base/failure
+combination.
+
+Without `--deploy-server`, the runner waits for the configured live server check
+to pass after deployment. With it, the runner calls the named executable on the
+configured deployment SSH host after exact-revision publication succeeds and the
+healthy API reports an older version. The request contains the release version,
+full commit, and published image digest. The [server release job](server/deploy/README.md)
+checks the backup and restore, deploys the digest, and runs migrations. The runner
+then independently verifies the live server before advancing client promotion.
+Configure the target once with `verify` as documented below.
+
+Run from a persistent checkout to survive a restart. Start `run` again with the
+same release ID and options. A local lock prevents two runners in one checkout,
+and the plan records repair, deployment, and workflow-retry attempts. If a job
+fails or its result is unknown after interruption, inspect GitHub or the host log
+before recovery. The runner will still continue if fresh checks show that the
+blocked step was completed independently.
+
+### Inspect status and delivery manually
+
 The component stages are `planned`, `prepare`, `prepared`, `promote`, `publishing`,
 `published`, and `verified`. `waiting` and `blocked` explain unmet prerequisites.
 Once components and the workspace snapshot are verified, `sync` brings release
