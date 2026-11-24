@@ -48,6 +48,16 @@ merge states still stop the merge. The tool never uses `--admin` or infers an
 exemption merely because you authored the PR.
 You can also merge PRs in GitHub and resume from the CLI.
 
+To start a coordinated release on the configured Hetzner host, pass the approved
+version and Android build number. Press Ctrl-C to detach from the journal while
+the release continues. Use `logs` with the same arguments to see the latest 50
+lines and follow updates.
+
+```sh
+tools/release-host 0.5.1 10
+tools/release-host logs 0.5.1 10
+```
+
 Status names the pending or failed CI jobs and prints a compact `Next:` instruction.
 `advance --dry-run --merge` previews eligible merges without changing anything.
 Without `--merge`, dry-run output explains that ready PRs will remain open.
