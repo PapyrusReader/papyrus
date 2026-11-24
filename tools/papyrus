@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CLIENT = ROOT / "client/app"
 SERVER = ROOT / "server"
 READER = ROOT / "reader"
+COMPONENTS = ("client", "server", "reader", "docs", "website", "observability")
 
 
 def run(args, cwd=ROOT, env=None):
@@ -35,6 +37,79 @@ def sdk_command(name):
 
 def uv(*args):
     return ["uv", "run", "--locked", *args]
+
+
+def reader_dependency(contents):
+    return re.search(r"(?m)^  papyrus_reader:\n(?:    .*\n?)+", contents)
+
+
+def sync_reader_pin():
+    if (CLIENT / "pubspec_overrides.yaml").exists():
+        raise RuntimeError("Deactivate app/pubspec_overrides.yaml to refresh the client's Git reader pin.")
+
+    revision = subprocess.check_output(
+        ["git", "rev-parse", "--verify", "origin/development^{commit}"], cwd=READER, text=True
+    ).strip()
+    manifest = CLIENT / "pubspec.yaml"
+    lockfile = CLIENT / "pubspec.lock"
+    original_manifest = manifest.read_text()
+    original_lock = lockfile.read_text()
+    dependency = reader_dependency(original_manifest)
+
+    if not dependency:
+        raise RuntimeError("Client manifest is missing the papyrus_reader dependency.")
+
+    pinned, replacements = re.subn(r"(?m)^      ref: [a-f0-9]{40}$", f"      ref: {revision}", dependency[0])
+
+    if replacements != 1:
+        raise RuntimeError("Client papyrus_reader dependency must have one exact Git revision.")
+
+    updated = original_manifest[:dependency.start()] + pinned + original_manifest[dependency.end():]
+    pub_get = [sdk_command("flutter"), "pub", "get"]
+    locked = reader_dependency(original_lock)
+
+    if updated == original_manifest and locked and f'resolved-ref: "{revision}"' in locked[0]:
+        return run([*pub_get, "--enforce-lockfile"], CLIENT)
+
+    success = False
+
+    try:
+        manifest.write_text(updated)
+        result = run(pub_get, CLIENT)
+
+        if result:
+            return result
+
+        resolved = reader_dependency(lockfile.read_text())
+
+        if not resolved or f'resolved-ref: "{revision}"' not in resolved[0]:
+            raise RuntimeError("Client lockfile did not resolve the requested reader revision.")
+
+        result = run([*pub_get, "--enforce-lockfile"], CLIENT)
+        success = result == 0
+        return result
+    finally:
+        if not success:
+            manifest.write_text(original_manifest)
+            lockfile.write_text(original_lock)
+
+
+def sync():
+    repositories = [ROOT, *(ROOT / name for name in COMPONENTS)]
+
+    for repository in repositories:
+        result = run(["git", "switch", "--no-recurse-submodules", "development"], repository)
+
+        if result:
+            return result
+
+    for repository in repositories:
+        result = run(["git", "pull", "--no-rebase", "--ff-only", "--no-recurse-submodules", "origin", "development"], repository)
+
+        if result:
+            return result
+
+    return sync_reader_pin()
 
 
 def checks(component):
@@ -216,7 +291,7 @@ def doctor():
     except (RuntimeError, ValueError):
         print("MISSING project SDK: run tools/papyrus sdk")
         failed = True
-    for name in ("client", "server", "reader", "docs", "website", "observability"):
+    for name in COMPONENTS:
         if (ROOT / name / ".git").exists():
             run(["git", "status", "--short", "--branch"], ROOT / name)
         else:
@@ -252,6 +327,7 @@ def main(argv=None):
     commands.add_parser("release", help="Prepare, inspect, and advance releases")
     commands.add_parser("doctor", help="Inspect tools and repos without changing them")
     commands.add_parser("sdk", help="Install/link the Flutter version in .fvmrc")
+    commands.add_parser("sync", help="Pull development in each repository and refresh the client reader pin")
     deps = commands.add_parser("deps", help="Install dependencies from existing locks")
     deps.add_argument("component", choices=["client", "server", "reader", "all"])
     quality = commands.add_parser(
@@ -278,6 +354,8 @@ def main(argv=None):
             fvm = shutil.which("fvm") or str(Path.home() / ".pub-cache/bin/fvm")
             pin = json.loads((ROOT / ".fvmrc").read_text())["flutter"]
             return run([fvm, "use", pin, "--force", "--skip-pub-get"])
+        if options.command == "sync":
+            return sync()
         if options.command == "check":
             return check(options.component)
         if options.command == "test":
@@ -336,7 +414,7 @@ def main(argv=None):
             ],
             CLIENT,
         )
-    except (RuntimeError, OSError) as error:
+    except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
         print(str(error), file=sys.stderr)
         return 1
 

@@ -68,6 +68,7 @@ directory. All subprocesses use the appropriate component directory.
 | `tools/papyrus doctor` | Inspect tools, config, SDK, repos, Docker and GitHub authentication |
 | `tools/papyrus sdk` | Install/link the FVM version from `.fvmrc` |
 | `tools/papyrus deps client` | Install client dependencies with its committed lock |
+| `tools/papyrus sync` | Fast-forward all repositories on `development` and pin the client to the latest merged reader commit |
 | `tools/papyrus deps reader` | Install reader dependencies with its committed lock |
 | `tools/papyrus deps server` | Install server/dev dependencies with the uv lock |
 | `tools/papyrus check client` | Non-writing Dart format check, Flutter analysis, web bootstrap and worker tests |
@@ -115,11 +116,13 @@ Run `python3 tools/check_deployments.py` to validate project separation, routing
 aliases, published ports and private database networks without starting services.
 Each project's runbook covers its own deployment and releases.
 
-For a joint reader/client change, validate a local reader using an ignored
-`client/app/pubspec_overrides.yaml`, then remove the override and pin the published
-reader commit in `client/app/pubspec.yaml`. Regenerate the client lock and update
-the workspace's reader and client gitlinks together. The reference check compares
-committed gitlinks and committed dependency files, independently of local overrides.
+Use `tools/papyrus sync` to switch the workspace and components to `development`,
+pull their changes, and update the client manifest and lockfile to the reader's
+latest merged commit. The client resolves this exact Git pin without a local
+override. An ignored `client/app/pubspec_overrides.yaml` remains available for
+testing unmerged reader work. Deactivate it when refreshing the Git pin.
+When recording a workspace snapshot, update its reader and client gitlinks
+together. The reference check compares committed gitlinks and dependency files.
 
 Server pytest fixtures drop and recreate test tables. The CLI checks for a separate
 local database named `*_test` or `test_*` and locks overlapping CLI server test runs.
