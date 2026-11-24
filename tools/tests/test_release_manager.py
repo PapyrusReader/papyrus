@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -317,8 +318,9 @@ class ReleaseManagerTest(unittest.TestCase):
             patch.object(self.manager, "check_server_deployment", side_effect=probe),
             patch.object(self.manager, "deployment_target", return_value=target),
             patch.object(self.manager, "server_image_record", return_value=image_record),
-            patch("release_runner.time.sleep", side_effect=publish_next),
+            patch("release_runner.time", wraps=time) as runner_clock,
         ):
+            runner_clock.sleep.side_effect = publish_next
             self.assertEqual(runner.run(), 0)
             self.assertEqual(runner.run(), 0)
 
