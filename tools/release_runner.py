@@ -128,7 +128,9 @@ class Runner:
             run = item.get("run") or {}
 
             if run.get("status") == "completed" and item["stage"] in ("published", "publishing"):
-                if run.get("conclusion") in ("cancelled", "timed_out"):
+                conclusion = run.get("conclusion")
+
+                if conclusion in ("cancelled", "timed_out"):
                     if run.get("headSha") != item.get("revision"):
                         return Decision("blocked", f"{name}: workflow belongs to a different release commit")
 
@@ -140,8 +142,10 @@ class Runner:
                     waiting.append(decision.detail)
                     continue
 
-                if run.get("conclusion") == "failure":
-                    return Decision("blocked", f"{name}: release workflow failed ({run['url']})")
+                if conclusion != "success":
+                    return Decision(
+                        "blocked", f"{name}: release workflow ended with {conclusion or 'no conclusion'} ({run['url']})",
+                    )
 
                 if name != "server" and item["stage"] == "published":
                     return Decision("blocked", f"{detail} ({run['url']})")
