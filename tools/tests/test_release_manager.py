@@ -7,13 +7,16 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 import release_manager as release  # noqa: E402
+from release_runner import Runner  # noqa: E402
 
 
 def git(path, *args):
@@ -50,7 +53,16 @@ class FakeGitHub:
         return None
 
     def merge_blocker(self, repo, pr):
-        return None if pr["mergeStateStatus"] == "CLEAN" else "checks pending or failing"
+        return self.merge_gate(repo, pr)[1]
+
+    def merge_gate(self, repo, pr):
+        if "test_gate" in pr:
+            return pr["test_gate"]
+
+        if pr["mergeStateStatus"] == "CLEAN":
+            return None, None
+
+        return "ci_pending", "checks pending or failing"
 
     def api(self, endpoint, **kwargs):
         return self.releases.get(endpoint)
@@ -92,22 +104,23 @@ class FakeGitHub:
             head = args[args.index("--head") + 1]
             base = args[args.index("--base") + 1]
             number = len(self.pulls) + 1
+            body = args[args.index("--body") + 1] if "--body" in args else Path(args[args.index("--body-file") + 1]).read_text()
             self.pulls[(repo, number)] = {
                 "number": number,
                 "url": f"https://github.com/{repo}/pull/{number}",
                 "state": "OPEN",
-                "body": Path(args[args.index("--body-file") + 1]).read_text(),
+                "body": body,
                 "headRefName": head,
                 "baseRefName": base,
                 "headRefOid": self.ref(repo, head),
                 "baseRefOid": self.ref(repo, base),
                 "mergeCommit": None,
-                "isDraft": False,
+                "isDraft": "--draft" in args,
                 "mergeStateStatus": "CLEAN",
                 "reviewDecision": "APPROVED",
                 "statusCheckRollup": [],
             }
-            return "created"
+            return self.pulls[(repo, number)]["url"]
 
         if args[:2] == ("pr", "merge"):
             number = int(args[2])
@@ -226,6 +239,7 @@ class ReleaseManagerTest(unittest.TestCase):
         self.github.runs[(repo, revision)] = [
             {
                 "databaseId": 123,
+                "attempt": 1,
                 "headSha": revision,
                 "status": "completed",
                 "conclusion": "success" if success else "failure",
@@ -246,6 +260,198 @@ class ReleaseManagerTest(unittest.TestCase):
         probe = patch.object(self.manager, "check_server_deployment", return_value={"revision": revision})
         self.addCleanup(probe.stop)
         return probe.start()
+
+    def runner(self, plan, *, deploy=None, notify=None, **options):
+        defaults = {
+            "release": plan["id"], "merge": True, "repair": False, "dry_run": False,
+            "poll_seconds": 1, "wait_timeout": None, "deploy_server": None,
+        }
+        report = []
+        dependencies = {"deploy": deploy} if deploy else {}
+        runner = Runner(
+            self.manager, SimpleNamespace(**(defaults | options)),
+            lambda release_id, decision, observations: report.append((decision.state, decision.detail)),
+            notify=notify, **dependencies,
+        )
+        return runner, report
+
+    def test_runner_waits_deploys_and_completes_the_saved_release(self):
+        plan = self.plan()
+        published = {}
+        deployed = []
+        target = {"ssh_host": "fixture"}
+        digest = "sha256:" + "a" * 64
+
+        def deploy(selected, executable, request):
+            self.assertEqual(selected, target)
+            self.assertEqual(executable, "/opt/papyrus/deploy")
+            self.assertEqual(self.status(self.manager.load(plan["id"]))["client"]["stage"], "waiting")
+            self.assertEqual(request, {
+                "version": plan["version"], "revision": published["server"],
+                "image": f"ghcr.io/papyrusreader/server@{digest}",
+            })
+            deployed.append(request["revision"])
+            return "Deployment job finished"
+
+        def probe(plan, revision):
+            if revision not in deployed:
+                raise release.ServerVersionMismatch("1.0.0", plan["version"])
+
+            return {"revision": revision}
+
+        def publish_next(_seconds):
+            repo = plan["components"]["server"]["repo"]
+
+            if "server" not in published:
+                published["server"] = self.publish(plan, "server")
+                self.github.runs[repo, published["server"]][0].update(status="in_progress", conclusion=None)
+            elif not deployed:
+                self.github.runs[repo, published["server"]][0].update(status="completed", conclusion="success")
+            else:
+                self.assertNotIn("client", published)
+                published["client"] = self.publish(plan, "client")
+
+        runner, report = self.runner(plan, deploy=deploy, deploy_server="/opt/papyrus/deploy")
+        image_record = f"ghcr.io/papyrusreader/server:{plan['version']}\nDigest {digest}\n"
+
+        with (
+            patch.object(self.manager, "check_server_deployment", side_effect=probe),
+            patch.object(self.manager, "deployment_target", return_value=target),
+            patch.object(self.manager, "server_image_record", return_value=image_record),
+            patch("release_runner.time", wraps=time) as runner_clock,
+        ):
+            runner_clock.sleep.side_effect = publish_next
+            self.assertEqual(runner.run(), 0)
+            self.assertEqual(runner.run(), 0)
+
+        self.assertEqual(deployed, [published["server"]])
+        self.assertIn(("waiting", "server: waiting for the publication workflow to finish"), report)
+        self.assertEqual(report[-1][0], "complete")
+        attempt = self.manager.load(plan["id"])["automation"][f"deploy:{published['server']}"]
+        self.assertEqual(attempt["state"], "finished")
+        self.assertEqual(git(self.remotes["workspace"], "ls-tree", "master", "client").split()[2], published["client"])
+
+    def test_runner_dry_run_and_merge_opt_in(self):
+        plan = self.plan("website")
+        notify = Mock()
+        runner, report = self.runner(plan, dry_run=True, notify=notify)
+        self.assertEqual(runner.run(), 0)
+        self.assertEqual(report[-1][0], "preview")
+        self.assertEqual(self.github.calls, [])
+        notify.assert_not_called()
+        runner, report = self.runner(plan, merge=False, notify=notify)
+        self.assertEqual(runner.run(), 2)
+        self.assertIn("--merge", report[-1][1])
+        self.assertEqual([call[:2] for call in self.github.calls], [("pr", "create")])
+        notify.assert_called_once_with(plan["id"], "blocked", report[-1][1])
+
+    def test_runner_does_not_repeat_an_interrupted_server_deploy(self):
+        plan = self.plan()
+        revision = self.promote_server(plan)
+        plan["automation"] = {f"deploy:{revision}": {"state": "started"}}
+        self.manager.save(plan)
+        digest = "sha256:" + "a" * 64
+        image_record = f"ghcr.io/papyrusreader/server:{plan['version']}\nDigest {digest}\n"
+        deployment = Mock()
+
+        with (
+            patch.object(self.manager, "check_server_deployment", side_effect=release.ServerVersionMismatch("1.0.0", "1.0.1")),
+            patch.object(self.manager, "deployment_target", return_value={}),
+            patch.object(self.manager, "server_image_record", return_value=image_record),
+        ):
+            runner, report = self.runner(plan, deploy=deployment, deploy_server="/opt/papyrus/deploy")
+            self.assertEqual(runner.run(), 2)
+
+        self.assertIn("was interrupted", report[-1][1])
+        deployment.assert_not_called()
+
+    def test_runner_retries_a_timed_out_release_workflow_once(self):
+        plan = self.plan("website")
+        self.advance(plan, prepare_only=True)
+        self.advance(plan, merge=True)
+        self.advance(plan)
+        self.advance(plan, merge=True)
+        revision = self.publish(plan, "website", success=False)
+        repo = plan["components"]["website"]["repo"]
+        run = self.github.runs[repo, revision][0]
+        run["conclusion"] = "timed_out"
+        runner, _ = self.runner(plan)
+        _, _, decision = runner.tick()
+        self.assertEqual(decision.state, "progress")
+        _, _, decision = runner.tick()
+        self.assertEqual(decision.state, "waiting")
+        run["attempt"] = 2
+        _, _, decision = runner.tick()
+        self.assertEqual(decision.state, "blocked")
+        retries = [call for call in self.github.calls if call[:2] == ("run", "rerun")]
+        self.assertEqual(retries, [("run", "rerun", 123, "--repo", repo, "--failed")])
+
+    def test_failed_check_gets_one_draft_repair_on_the_recorded_head(self):
+        plan = self.plan("website")
+        self.advance(plan, prepare_only=True)
+        repo = plan["components"]["website"]["repo"]
+        pr = next(iter(self.github.pulls.values()))
+        pr["test_gate"] = ("ci_failed", "CI failed: test")
+        pr["statusCheckRollup"] = [{"conclusion": "FAILURE", "name": "test"}]
+        runner, _ = self.runner(plan, repair=True)
+
+        def edit(worktree, prompt):
+            self.assertIn(pr["headRefOid"], prompt)
+            self.assertIn("CI failed: test", prompt)
+            (worktree / "fix.txt").write_text("fixed\n")
+
+        with patch("release_repair.edit_with_codex", side_effect=edit) as codex:
+            loaded, _, decision = runner.tick()
+            self.assertEqual(decision.state, "working")
+            finished = runner.finish_job(loaded["id"], *decision.job)
+            self.assertEqual(finished.state, "progress", finished.detail)
+            restarted, _ = self.runner(plan, repair=True)
+            _, _, waiting = restarted.tick()
+            self.assertEqual(waiting.state, "waiting")
+            self.assertIn("Codex repair", waiting.detail)
+            codex.assert_called_once()
+
+        draft = self.github.pulls[repo, 2]
+        self.assertTrue(draft["isDraft"])
+        self.assertEqual(draft["baseRefName"], pr["headRefName"])
+        self.assertEqual(git(self.remotes["website"], "rev-parse", f"{draft['headRefName']}^"), pr["headRefOid"])
+        self.assertEqual(read_remote(self, "website", draft["headRefName"], "fix.txt").strip(), "fixed")
+
+    def test_conflict_repair_preserves_both_recorded_histories(self):
+        path = self.manager.path("website")
+
+        for branch in ("master", "development"):
+            git(path, "checkout", branch)
+            (path / "conflict.txt").write_text(f"{branch}\n")
+            git(path, "add", "conflict.txt")
+            git(path, "commit", "-m", f"Change {branch}")
+            git(path, "push", "origin", branch)
+
+        plan = self.plan("website")
+        self.advance(plan, prepare_only=True)
+        self.advance(plan, merge=True)
+        self.advance(plan)
+        repo = plan["components"]["website"]["repo"]
+        promotion = self.github.pulls[repo, 2]
+        promotion["test_gate"] = ("conflicts", "merge conflicts")
+        runner, _ = self.runner(plan, repair=True)
+
+        def edit(worktree, _prompt):
+            self.assertIn("<<<<<<<", (worktree / "conflict.txt").read_text())
+            (worktree / "conflict.txt").write_text("resolved\n")
+
+        with patch("release_repair.edit_with_codex", side_effect=edit):
+            loaded, _, decision = runner.tick()
+            self.assertEqual(decision.state, "working")
+            finished = runner.finish_job(loaded["id"], *decision.job)
+            self.assertEqual(finished.state, "progress", finished.detail)
+
+        draft = self.github.pulls[repo, 3]
+        self.assertTrue(draft["isDraft"])
+        self.assertEqual(draft["baseRefName"], "development")
+        parents = git(self.remotes["website"], "log", "-1", "--format=%P", draft["headRefName"]).split()
+        self.assertEqual(parents, [promotion["headRefOid"], promotion["baseRefOid"]])
+        self.assertEqual(read_remote(self, "website", draft["headRefName"], "conflict.txt").strip(), "resolved")
 
     def test_plan_and_dry_run_do_not_write_remotes_or_checkouts(self):
         before = {name: git(self.manager.path(name), "status", "--porcelain") for name in self.remotes}
