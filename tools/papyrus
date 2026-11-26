@@ -177,7 +177,7 @@ def checks(component):
             [sys.executable, "-m", "unittest", "discover", "-s", "tools/tests", "-v"],
             ROOT,
         ),
-        (["shellcheck", "tools/flutter", "tools/dart", "tools/dart-mcp", "tools/release-host"], ROOT),
+        (["shellcheck", "tools/flutter", "tools/dart", "tools/dart-mcp", "tools/release-host", "tools/release-octopus", "tools/octopus/ssh-entry"], ROOT),
     ]
 
 
