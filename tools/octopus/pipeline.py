@@ -14,9 +14,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from source import RELEASE_PATHS, resolve
 from release import version_tuple
-from release_deployment import ServerVersionMismatch, migration_heads, published_image, verify_server
+from release_deployment import DeploymentError, ServerVersionMismatch, migration_heads, published_image, verify_server
 from release_manager import GitHub, git, read_file, version_files
-from release_runner import deploy_server
 
 ROOT = Path("/var/lib/papyrus-release/workspace")
 STATE = Path("/var/lib/papyrus-release/octopus")
@@ -206,6 +205,21 @@ def run_workflow(hub, directory, stage, repo, workflow, title, inputs):
         time.sleep(20)
 
 
+def invoke_server_job(target, request):
+    args = [
+        "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=3", "--", target["ssh_host"], "/usr/local/bin/papyrus-release-server",
+    ]
+
+    try:
+        result = subprocess.run(args, input=json.dumps(request), text=True, capture_output=True, timeout=3600)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise DeploymentError("Server deployment job was interrupted; check its state on the host") from error
+
+    if result.returncode:
+        raise DeploymentError(f"Server deployment job exited {result.returncode}; check its host log")
+
+
 def server_deploy(hub, number, manifest):
     version, _ = parse_release(number)
     repo = ROOT / "server"
@@ -223,8 +237,8 @@ def server_deploy(hub, number, manifest):
     except ServerVersionMismatch as mismatch:
         if version_tuple(str(mismatch.actual)) >= version_tuple(version):
             raise ValueError("Refusing to replace a newer production version") from mismatch
-        deploy_server(target, "/usr/local/bin/papyrus-release-server",
-                      dict(version=version, revision=revision, image=published_image(record, version), manifest=manifest))
+        request = dict(version=version, revision=revision, image=published_image(record, version), manifest=manifest)
+        invoke_server_job(target, request)
         verify_server(target, **expected)
 
 

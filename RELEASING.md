@@ -8,42 +8,55 @@ deploy additive server changes before distributing a client that needs them.
 
 ## Release the client and server with Octopus
 
-In the workspace GitHub Actions tab, select **Release Papyrus with Octopus**, choose
-the `master` branch, and select a major, minor, or patch bump. The default **preview**
-mode reads the current version and checks the Octopus connection. **Release** starts
-the pipeline. From an authenticated GitHub CLI, use `tools/release-octopus minor preview`
-or `tools/release-octopus minor release`. The GitHub run links the Octopus task.
-
-Octopus records the reviewed development tips once, writes version-only commits on
-component release branches, and opens one workspace manifest PR against `master`.
-The PR contains the version, Android build number, client/server gitlinks, and the
-reader revision in the client lockfile. Review the snapshot there. The release
-account merges the approved PR when its required checks pass. Later changes on
-component development branches are picked up by the next release.
+1. Merge the client and server changes you want to ship into their respective
+   `development` branches. Octopus captures those commits when release preparation starts.
+2. Open [Release Papyrus with Octopus](https://github.com/PapyrusReader/papyrus/actions/workflows/octopus.yml)
+   in GitHub and select **Run workflow**. Choose **master**, select the version
+   increment, and leave the explicit number empty for a calculated version and build.
+3. Select **release** and click **Run workflow**. The default **preview** mode
+   only calculates the version and checks Octopus access. From the CLI,
+   `tools/release-octopus minor release` starts the same workflow.
+4. Review the bot's **Release Papyrus** PR in the workspace. Check the version,
+   Android build number, and pinned client, server and reader revisions. Under
+   **Files changed → Review changes**, choose **Approve** and submit the review.
+   The release account merges it after required checks pass.
+5. Open the workflow run's **Summary** and follow the Octopus task link. The
+   GitHub launcher finishes after dispatch. The Octopus task reports the outcome
+   of production deployment and delivery.
 
 The server image and signed client downloads build in parallel in their owning
-GitHub repositories. The server job requires a verified off-host backup and
-restore, deploys by digest, and verifies the running revision and migration heads.
+GitHub repositories. Before deploying the new image by digest, Hetzner uploads an encrypted backup
+to Cloudflare R2, downloads it, and restores PostgreSQL in an isolated container.
+After deployment, Octopus checks the live server revision and migration heads.
 Only then are the sealed client downloads published. Web and Play internal delivery
 run independently. The separate website release stays independent.
 
 Use **Retry** on the failed Octopus step after fixing the cause. The release host
 stores the GitHub run IDs under `/var/lib/papyrus-release/octopus/<version>+<build>/`.
-Retries follow or rerun the original failed GitHub jobs. Signed client build artifacts
-are retained for 30 days until publication. The installed backup hook selects the storage destination.
-See [R2 backup migration](tools/backup/R2_MIGRATION.md) for cutover and recovery. The **Verify release connection** runbook checks
-worker, SSH, and GitHub connectivity without creating a release.
+Retries follow or rerun the original failed GitHub jobs. For restore drills and recovery keys, see [production R2 backups](tools/backup/R2_BACKUPS.md).
+The **Verify release connection** runbook checks the Octopus worker, SSH and GitHub
+connection without creating a release.
 
 The release trigger uses GitHub OIDC restricted to the workspace release workflow on
 `master`. Octopus stores a dedicated SSH credential restricted on Hetzner to the named
 release stages. Signing, Play credentials, and backup credentials stay with their
 existing owners. The Octopus process definition is in `tools/octopus/configure.py`.
 
+## Updating the release host
+
+The Octopus worker connects to the forced SSH command in
+`/opt/papyrus-release/octopus/ssh-entry`. Hetzner runs the installed Python
+modules in that directory and `/opt/papyrus-release/lib`. Merging a workspace
+PR updates the source repository. Installing these modules is a separate host
+operation. Between deployments, install the matching pipeline and its imports
+together and run **Verify release connection** in Octopus. Preserve the state in
+`/var/lib/papyrus-release/octopus/` so that retries find the original build runs.
+
 ## GitHub Actions and release artifacts
 
 The workspace workflow starts Octopus. The client and server `release.yml`
 workflows run on dispatch against the approved workspace manifest. The client
-build collects the Android, web, Linux and Windows outputs into `sealed-release`.
+build collects the Android, web, Linux and Windows outputs into `sealed-release`, retained for 30 days.
 Publication downloads that artifact from the recorded build run. Delivery reads
 the published assets by tag. Workspace version, tooling and deployment-layout
 checks validate pull requests. They have no publish or deploy steps.

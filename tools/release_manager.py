@@ -17,7 +17,6 @@ from release_deployment import (
     DeploymentError,
     ServerVersionMismatch,
     migration_heads,
-    published_image,
     validate_target,
     verify_server,
 )
@@ -280,14 +279,14 @@ class Manager:
         self.fetched = set()
 
     @contextlib.contextmanager
-    def lock(self, name="manager", *, blocking=False):
+    def lock(self):
         self.storage.mkdir(parents=True, exist_ok=True)
 
-        with (self.storage / f"{name}.lock").open("a") as handle:
+        with (self.storage / "manager.lock").open("a") as handle:
             try:
-                fcntl.flock(handle, fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
-                raise ReleaseChanged(f"Another release {name} is running") from error
+                raise ReleaseChanged("Another release manager is running") from error
 
             yield
 
@@ -558,22 +557,6 @@ class Manager:
         return self.github.call(
             "release", "download", component["tag"], "--repo", component["repo"], "--pattern", "image.txt", "--output", "-"
         )
-
-    def server_deployment_request(self, plan, item):
-        revision = item["revision"]
-        run = item.get("run") or {}
-
-        if run.get("headSha") != revision or run.get("conclusion") != "success":
-            raise ReleaseError("Server publication workflow has not succeeded for the release commit")
-
-        if self.revision("server", "origin/master") != revision:
-            raise ReleaseError("Server release is no longer the tip of master")
-
-        return {
-            "version": plan["version"],
-            "revision": revision,
-            "image": published_image(self.server_image_record(plan), plan["version"]),
-        }
 
     def component_step(self, plan, name):
         component = plan["components"][name]
@@ -901,9 +884,8 @@ class Manager:
 
         return True
 
-    def advance(self, plan, *, merge=False, dry_run=False, prepare_only=False, observations=None):
-        if observations is None:
-            observations = self.status(plan)
+    def advance(self, plan, *, merge=False, dry_run=False, prepare_only=False):
+        observations = self.status(plan)
 
         performed = []
 
@@ -940,90 +922,6 @@ class Manager:
 
         if self.revision(name, "FETCH_HEAD") != expected:
             raise ReleaseChanged(f"{name}: preparation branch changed while fetching")
-
-    def integrated_pull_requests(self, name, repo, old, new):
-        if old == new:
-            return True
-
-        repository = self.path(name)
-        commits = git(repository, "rev-list", "--first-parent", "--reverse", f"{old}..{new}").splitlines()
-
-        if not commits or self.revision(name, f"{commits[0]}^1") != old:
-            return False
-
-        for commit in commits:
-            pulls = self.github.api(f"repos/{repo}/commits/{commit}/pulls")
-
-            if not any(
-                pr["merged_at"] and pr["merge_commit_sha"] == commit
-                and pr["base"]["ref"] == "development" and pr["base"]["repo"]["full_name"] == repo
-                for pr in pulls
-            ):
-                return False
-
-        return True
-
-    def refresh_preparation(self, plan, name):
-        """Follow merged development PRs and recognize an interrupted clean branch update."""
-        component = plan["components"][name]
-        branch = self.branch(plan)
-        pr = self.get_pr(plan, name, "prepare", branch, "development")
-        expected = component.get("prepared_head")
-        development = self.revision(name, "origin/development")
-
-        if not expected or not pr or pr["state"] != "OPEN" or pr["baseRefOid"] != development:
-            raise ReleaseChanged(f"{name}: preparation changed, refreshing status")
-
-        repository = self.path(name)
-        head = pr["headRefOid"]
-        accepted = component["accepted_development"]
-        self.fetch_preparation(plan, name, head)
-        base = development
-
-        if head != expected:
-            # Adopt only the exact result of merging development into our recorded head.
-            parents = git(repository, "show", "-s", "--format=%P", head).split()
-
-            if len(parents) != 2 or parents[0] != expected or not self.ancestor(name, parents[1], development):
-                return False
-
-            base = parents[1]
-
-        if self.version(name, base) != self.version(name, component["source"]):
-            return False
-
-        if not self.integrated_pull_requests(name, component["repo"], accepted, base):
-            return False
-
-        tree = git(repository, "merge-tree", "--write-tree", expected, base, optional=True)
-
-        if not tree or not self.matches(plan, name, tree):
-            return False
-
-        if head != expected:
-            if git(repository, "rev-parse", f"{head}^{{tree}}") != tree:
-                return False
-        elif not self.ancestor(name, base, head):
-            head = git(
-                repository, "commit-tree", tree, "-p", expected, "-p", base,
-                "-m", f"Merge development into {branch}",
-            )
-            # This is a fast-forward from expected. A concurrent edit must win the race.
-            ref = f"refs/heads/{branch}"
-            try:
-                git(repository, "push", "--quiet", f"--force-with-lease={ref}:{expected}", "origin", f"{head}:{ref}")
-            except ReleaseError:
-                if git(repository, "ls-remote", "--refs", "origin", ref).split()[:1] != [expected]:
-                    raise ReleaseChanged(f"{name}: preparation changed during push, refreshing status")
-
-                raise
-        elif accepted == base:
-            return False
-
-        component["accepted_development"] = base
-        component["prepared_head"] = head
-        self.save(plan)
-        return True
 
     def accept_head(self, plan, name):
         if name not in plan["components"]:
@@ -1102,7 +1000,7 @@ class Manager:
         }
         self.save(plan)
 
-    def retry(self, plan, name, stage, *, expected_run=None):
+    def retry(self, plan, name, stage):
         observations = self.observe(plan)
 
         if name not in observations or name == "workspace":
@@ -1132,9 +1030,6 @@ class Manager:
 
         run = item.get("run")
 
-        if expected_run is not None and run != expected_run:
-            raise ReleaseChanged(f"{name}: release workflow changed before retry")
-
         if not run and item["stage"] == "publishing" and self.revision(name, "origin/master") == item["revision"]:
             self.github.call("workflow", "run", "release.yml", "--repo", component["repo"], "--ref", "master")
             return
@@ -1146,7 +1041,7 @@ class Manager:
 
 
 def next_step(plan, observations):
-    if plan.get("source") == "github":
+    if plan.get("source") == "github" or not plan["id"].startswith("website-"):
         return None
 
     command = "tools/papyrus release"
@@ -1278,24 +1173,16 @@ def parser():
     listing.add_argument("--component", choices=("all", "papyrus", "website"), default="all")
     listing.add_argument("--limit", type=positive_integer, default=20, help="Maximum rows (default: 20)")
 
-    for name in ("status", "prepare", "advance", "run", "accept-head", "verify", "retry"):
-        help_text = {"help": "Drive a saved release through verification and synchronization"} if name == "run" else {}
-        subparser = commands.add_parser(name, **help_text)
+    for name in ("status", "prepare", "advance", "accept-head", "verify", "retry"):
+        subparser = commands.add_parser(name)
         subparser.add_argument("release")
         subparser.add_argument("--json", action="store_true")
 
-        if name in ("advance", "prepare", "run"):
+        if name in ("advance", "prepare"):
             subparser.add_argument("--dry-run", action="store_true")
 
-        if name in ("advance", "run"):
+        if name == "advance":
             subparser.add_argument("--merge", action="store_true", help="Merge eligible PRs")
-
-        if name == "run":
-            subparser.add_argument("--poll-seconds", type=positive_integer, default=30, help="Initial poll interval")
-            subparser.add_argument("--wait-timeout", type=positive_integer, metavar="SECONDS", help="Limit time waiting")
-            subparser.add_argument("--repair", action="store_true", help="Invoke Codex and open draft repair PRs")
-            subparser.add_argument("--deploy-server", type=remote_executable, metavar="PATH", help="Server-side SSH job")
-            subparser.add_argument("--notify-command", metavar="PATH", help="Send actionable alerts via a local executable")
 
         if name in ("accept-head", "verify", "retry"):
             subparser.add_argument("--component", choices=COMPONENTS, required=True)
@@ -1313,13 +1200,6 @@ def parser():
     return result
 
 
-def remote_executable(value):
-    if not re.fullmatch(r"/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+", value) or {".", ".."} & set(value.split("/")):
-        raise argparse.ArgumentTypeError("use an absolute executable path on the deployment host")
-
-    return value
-
-
 def main(argv=None, *, root=None):
     options = parser().parse_args(argv)
     manager = Manager(root or Path(__file__).resolve().parents[1])
@@ -1329,14 +1209,6 @@ def main(argv=None, *, root=None):
     try:
         if options.command == "plan" and options.component != "website":
             raise ReleaseError(retired)
-
-        if options.command == "run":
-            if set(manager.load(options.release)["components"]) != {"website"}:
-                raise ReleaseError(retired)
-
-            from release_runner import run_release
-
-            return run_release(manager, options)
 
         with manager.lock():
             if options.command == "list":
