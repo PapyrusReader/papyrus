@@ -160,6 +160,15 @@ class Runner:
                 attention.extend(decision.attention)
                 continue
 
+            behind = item["stage"] == "prepare" and gate == "behind"
+            if self.options.merge and name != "workspace" and (gate == "preparation_drift" or behind):
+                if self.manager.refresh_preparation(plan, name):
+                    component = plan["components"][name]
+                    return Decision(
+                        "progress", f"{name}: updated preparation to {component['prepared_head'][:12]} "
+                        f"for development {component['accepted_development'][:12]}",
+                    )
+
             if gate in REPAIR_GATES and self.options.repair:
                 from release_repair import propose_repair
 

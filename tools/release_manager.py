@@ -605,10 +605,18 @@ class Manager:
             if not self.matches(plan, name, prepared):
                 return step(name, "blocked", "preparation merged with the wrong version")
         elif preparation:
-            if development != component["accepted_development"]:
-                return step(name, "blocked", "development changed, use accept-head")
+            if preparation["state"] == "OPEN" and preparation["baseRefOid"] != development:
+                raise ReleaseChanged(f"{name}: development moved while observing preparation")
 
-            return self.pr_step(plan, name, "prepare", preparation, component.get("prepared_head", ""))
+            if preparation["state"] == "OPEN" and development != component["accepted_development"]:
+                return step(name, "blocked", "development changed, use accept-head", gate="preparation_drift")
+
+            item = self.pr_step(plan, name, "prepare", preparation, component.get("prepared_head", ""))
+
+            if preparation["state"] == "OPEN" and preparation["headRefOid"] != component.get("prepared_head"):
+                item["gate"] = "preparation_drift"
+
+            return item
         elif self.matches(plan, name, component["source"]):
             prepared = component["source"]
         else:
@@ -923,6 +931,100 @@ class Manager:
 
         return observations, performed
 
+    def fetch_preparation(self, plan, name, expected):
+        repository = self.path(name)
+        git(
+            repository, "fetch", "--quiet", "--no-tags", "--no-recurse-submodules",
+            "origin", f"refs/heads/{self.branch(plan)}",
+        )
+
+        if self.revision(name, "FETCH_HEAD") != expected:
+            raise ReleaseChanged(f"{name}: preparation branch changed while fetching")
+
+    def integrated_pull_requests(self, name, repo, old, new):
+        if old == new:
+            return True
+
+        repository = self.path(name)
+        commits = git(repository, "rev-list", "--first-parent", "--reverse", f"{old}..{new}").splitlines()
+
+        if not commits or self.revision(name, f"{commits[0]}^1") != old:
+            return False
+
+        for commit in commits:
+            pulls = self.github.api(f"repos/{repo}/commits/{commit}/pulls")
+
+            if not any(
+                pr["merged_at"] and pr["merge_commit_sha"] == commit
+                and pr["base"]["ref"] == "development" and pr["base"]["repo"]["full_name"] == repo
+                for pr in pulls
+            ):
+                return False
+
+        return True
+
+    def refresh_preparation(self, plan, name):
+        """Follow merged development PRs and recognize an interrupted clean branch update."""
+        component = plan["components"][name]
+        branch = self.branch(plan)
+        pr = self.get_pr(plan, name, "prepare", branch, "development")
+        expected = component.get("prepared_head")
+        development = self.revision(name, "origin/development")
+
+        if not expected or not pr or pr["state"] != "OPEN" or pr["baseRefOid"] != development:
+            raise ReleaseChanged(f"{name}: preparation changed, refreshing status")
+
+        repository = self.path(name)
+        head = pr["headRefOid"]
+        accepted = component["accepted_development"]
+        self.fetch_preparation(plan, name, head)
+        base = development
+
+        if head != expected:
+            # Adopt only the exact result of merging development into our recorded head.
+            parents = git(repository, "show", "-s", "--format=%P", head).split()
+
+            if len(parents) != 2 or parents[0] != expected or not self.ancestor(name, parents[1], development):
+                return False
+
+            base = parents[1]
+
+        if self.version(name, base) != self.version(name, component["source"]):
+            return False
+
+        if not self.integrated_pull_requests(name, component["repo"], accepted, base):
+            return False
+
+        tree = git(repository, "merge-tree", "--write-tree", expected, base, optional=True)
+
+        if not tree or not self.matches(plan, name, tree):
+            return False
+
+        if head != expected:
+            if git(repository, "rev-parse", f"{head}^{{tree}}") != tree:
+                return False
+        elif not self.ancestor(name, base, head):
+            head = git(
+                repository, "commit-tree", tree, "-p", expected, "-p", base,
+                "-m", f"Merge development into {branch}",
+            )
+            # This is a fast-forward from expected. A concurrent edit must win the race.
+            ref = f"refs/heads/{branch}"
+            try:
+                git(repository, "push", "--quiet", f"--force-with-lease={ref}:{expected}", "origin", f"{head}:{ref}")
+            except ReleaseError:
+                if git(repository, "ls-remote", "--refs", "origin", ref).split()[:1] != [expected]:
+                    raise ReleaseChanged(f"{name}: preparation changed during push, refreshing status")
+
+                raise
+        elif accepted == base:
+            return False
+
+        component["accepted_development"] = base
+        component["prepared_head"] = head
+        self.save(plan)
+        return True
+
     def accept_head(self, plan, name):
         if name not in plan["components"]:
             raise ReleaseError("Component is not in this release")
@@ -949,6 +1051,8 @@ class Manager:
 
             component["promotion_head"] = head
         elif preparation and preparation["state"] == "OPEN":
+            self.fetch_preparation(plan, name, preparation["headRefOid"])
+
             if not self.matches(plan, name, preparation["headRefOid"]):
                 raise ReleaseError("Preparation PR must contain the target version")
 
