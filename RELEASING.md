@@ -22,7 +22,7 @@ account merges the approved PR when its required checks pass. Later changes on
 component development branches are picked up by the next release.
 
 The server image and signed client downloads build in parallel in their owning
-GitHub repositories. The server job requires a verified off-host Mac backup and
+GitHub repositories. The server job requires a verified off-host backup and
 restore, deploys by digest, and verifies the running revision and migration heads.
 Only then are the sealed client downloads published. Web and Play internal delivery
 run independently. The separate website release stays independent.
@@ -30,8 +30,8 @@ run independently. The separate website release stays independent.
 Use **Retry** on the failed Octopus step after fixing the cause. The release host
 stores the GitHub run IDs under `/var/lib/papyrus-release/octopus/<version>+<build>/`.
 Retries follow or rerun the original failed GitHub jobs. Signed client build artifacts
-are retained for 30 days until publication. The existing Mac backup destination must
-be reachable during the server step. The **Verify release connection** runbook checks
+are retained for 30 days until publication. The installed backup hook selects the storage destination.
+See [R2 backup migration](tools/backup/R2_MIGRATION.md) for cutover and recovery. The **Verify release connection** runbook checks
 worker, SSH, and GitHub connectivity without creating a release.
 
 The release trigger uses GitHub OIDC restricted to the workspace release workflow on
