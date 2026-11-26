@@ -125,6 +125,35 @@ fails or its result is unknown after interruption, inspect GitHub or the host lo
 before recovery. The runner will still continue if fresh checks show that the
 blocked step was completed independently.
 
+### Back up to the operator's Mac before deployment
+
+On the deployment host, install `tools/release_backup_host.py` as
+`/etc/papyrus-release/backup-check`, owned by root with mode 0700. Configure the
+server deployment job to use this hook. Add
+`--deploy-server /usr/local/bin/papyrus-release-server` to the runner service's
+existing launch arguments and reload systemd. Apply service changes between
+deployment jobs.
+
+On the Mac, install restic and use Python 3.11 or later. The worker uses the
+existing `hetzner` SSH configuration with batch authentication and local Docker.
+Install the launch agent once from the logged-in operator's terminal:
+
+```sh
+python3 tools/release_backup_mac.py install
+```
+
+The host stages the media before briefly stopping the API for a final copy and
+database dump. It restarts the API before transferring data. The Mac polls every
+two minutes, saves the archive in the encrypted restic repository at
+`~/Backups/papyrus/release.restic`, and reads it back. It checks the entire
+archive against the host digest, restores PostgreSQL into a disposable container,
+and compares the counts and migration revision. The host proceeds only after
+receiving confirmation for that specific backup. The Mac must be awake with its
+operator logged in and Docker available. After 45 minutes without confirmation
+the hook stops the deployment. Worker logs are in `~/Library/Logs/Papyrus/`.
+Keep the repository's recovery password at
+`~/.config/papyrus-backup-keys/release-restic.password` with the backup keys.
+
 ### Inspect status and delivery manually
 
 The component stages are `planned`, `prepare`, `prepared`, `promote`, `publishing`,
