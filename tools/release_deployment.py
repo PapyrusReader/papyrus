@@ -14,6 +14,24 @@ class DeploymentError(RuntimeError):
     pass
 
 
+class ServerVersionMismatch(DeploymentError):
+    def __init__(self, actual, expected):
+        self.actual = actual
+        super().__init__(f"live API is {actual or 'unknown'}, expected {expected}")
+
+
+def published_image(image_record, version):
+    lines = image_record.strip().splitlines()
+    repository = "ghcr.io/papyrusreader/server"
+
+    if len(lines) != 2 or lines[0] != f"{repository}:{version}" or not re.fullmatch(
+        r"Digest sha256:[0-9a-f]{64}", lines[1]
+    ):
+        raise DeploymentError("Published server image or digest is missing or invalid")
+
+    return f"{repository}@{lines[1].removeprefix('Digest ')}"
+
+
 def validate_target(target):
     if not isinstance(target, dict) or any(not isinstance(target.get(key), str) for key in ("url", "ssh_host", "container")):
         raise DeploymentError("Configure the server URL, SSH host, and API container")
@@ -160,15 +178,10 @@ def verify_server(target, *, version, revision, image_record, migrations):
     actual_version = schema.get("info", {}).get("version")
 
     if actual_version != version:
-        raise DeploymentError(f"live API is {actual_version or 'unknown'}, expected {version}")
+        raise ServerVersionMismatch(actual_version, version)
 
-    lines = image_record.strip().splitlines()
-
-    if len(lines) != 2 or not re.fullmatch(r"Digest sha256:[0-9a-f]{64}", lines[1]):
-        raise DeploymentError("Published image digest is missing or invalid")
-
-    image = lines[0].rsplit(":", 1)[0]
-    digest = lines[1].removeprefix("Digest ")
+    image = published_image(image_record, version)
+    digest = image.split("@", 1)[1]
     observed = inspect_server(target)
     labels = observed.get("labels") or {}
 
@@ -178,7 +191,7 @@ def verify_server(target, *, version, revision, image_record, migrations):
     if observed.get("version") != version:
         raise DeploymentError("Running server package differs from the release version")
 
-    if f"{image}@{digest}" not in (observed.get("digests") or []):
+    if image not in (observed.get("digests") or []):
         raise DeploymentError("Running server image differs from the published digest")
 
     if observed.get("migrations") != sorted(migrations):
