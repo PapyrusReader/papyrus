@@ -990,6 +990,18 @@ class GitHubChecksTest(unittest.TestCase):
             with self.assertRaisesRegex(release.ReleaseError, "401"):
                 github.api("repos/test/repo/releases/tags/v1.0.0", missing=True)
 
+    def test_cli_retires_coordinated_mutations_including_saved_short_selectors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manager = release.Manager(root)
+            manager.save({"id": "papyrus-1.0.0+1", "version": "1.0.0", "components": {"server": {}, "client": {}}})
+
+            for args in (["plan", "1.1.0", "--android-build", "2"], ["advance", "1.0.0", "--merge"],
+                         ["run", "1.0.0+1", "--merge"]):
+                with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()) as errors:
+                    self.assertEqual(release.main(args, root=root), 1)
+                    self.assertIn("run in Octopus", errors.getvalue())
+
     def test_main_reports_errors_without_tracebacks(self):
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()) as errors:
             result = release.main(["status", "../../escape"], root=Path(directory))

@@ -1265,7 +1265,7 @@ def positive_integer(value):
 def parser():
     result = argparse.ArgumentParser(
         prog="papyrus release",
-        description="Prepare, inspect, and advance releases. Output is compact by default.",
+        description="Inspect release history and manage standalone website releases. For client/server use tools/release-octopus.",
     )
     commands = result.add_subparsers(dest="command", required=True)
     plan = commands.add_parser("plan", help="Record release intent without remote writes")
@@ -1324,8 +1324,16 @@ def main(argv=None, *, root=None):
     options = parser().parse_args(argv)
     manager = Manager(root or Path(__file__).resolve().parents[1])
 
+    retired = "Client/server releases run in Octopus. Use tools/release-octopus minor preview or minor release."
+
     try:
+        if options.command == "plan" and options.component != "website":
+            raise ReleaseError(retired)
+
         if options.command == "run":
+            if set(manager.load(options.release)["components"]) != {"website"}:
+                raise ReleaseError(retired)
+
             from release_runner import run_release
 
             return run_release(manager, options)
@@ -1360,6 +1368,9 @@ def main(argv=None, *, root=None):
                 return 0
 
             plan = manager.load(options.release)
+
+            if set(plan["components"]) != {"website"}:
+                raise ReleaseError(retired)
 
             if options.command in ("prepare", "advance"):
                 with activity("Checking next release step", enabled=not options.json):
