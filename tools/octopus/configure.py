@@ -12,7 +12,7 @@ STEPS = (
     ("Approve the workspace release manifest", "prepare", False),
     ("Build the server image", "server-build", False),
     ("Build and sign client artifacts", "client-build", True),
-    ("Verify the Mac backup and deploy the server digest", "server-deploy", False),
+    ("Verify the off-host backup and deploy the server digest", "server-deploy", False),
     ("Publish signed downloads", "publish", False),
     ("Deliver and verify the web app", "web", False),
     ("Deliver and verify Google Play internal", "play", True),
@@ -60,6 +60,10 @@ def main():
     process_path = project["Links"]["DeploymentProcess"]
     process = api(key, process_path)
     existing = {step["Name"]: step for step in process["Steps"]}
+    previous_title = "Verify the Mac backup and deploy the server digest"
+    backup_title = next(title for title, stage, _ in STEPS if stage == "server-deploy")
+    if previous_title in existing and backup_title not in existing:
+        existing[backup_title] = existing.pop(previous_title)
     if set(existing) - {title for title, _, _ in STEPS}:
         raise ValueError("Existing process has unrelated steps")
     known_host = args.known_hosts_file.read_text().strip()
