@@ -21,6 +21,11 @@ atomically; deleting physical media occurs after commit. Tombstones stop delayed
 offline writes from reviving deleted entities. Tests should prove the affected
 failure mode, including account/server profile isolation when relevant.
 
+When changing upload retries or acknowledgement handling, run the disposable
+two-client Toxiproxy test. It drops the writer's response after the observer
+sees the annotation, then checks that the retry drains the queue and leaves one
+copy on each client. [Setup and command](../../../client/docs/JOURNEY_TESTING.md#lost-upload-acknowledgement)
+
 For auth, trace refresh, token expiry, logout and profile transition as well as the
 successful sign-in. Distinguish opaque refresh tokens, short-lived API access JWTs
 and PowerSync credentials. Keep browser callbacks/deep links and API prefixes

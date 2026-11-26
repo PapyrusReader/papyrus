@@ -1,6 +1,6 @@
 ---
 name: papyrus-client
-description: Implement or debug Papyrus Flutter UI, reader integration, local storage, and platform behavior in client/app.
+description: Implement, debug, or test Papyrus Flutter UI, reader integration, local storage, and platform behavior in client/app. Use for exploratory UI checks, mobile journeys, and Dart dead-code reviews.
 ---
 
 Read `client/AGENTS.md` from the Papyrus workspace. Work in `client/app`; use the
@@ -26,6 +26,28 @@ and PDF locators have different semantics; preserve restart/resume and progress.
 Use Dart MCP with `client/app` as a root when available for diagnostics, tests and
 running-app inspection. CLI checks remain available when MCP is not attached.
 Consult Context7 or official docs for framework APIs specific to the installed SDK.
+
+When investigating a Flutter interaction, use Marionette on an instrumented debug
+build to reproduce the steps and inspect the visible result, screenshot, or logs.
+It needs `marionette_flutter` and `MarionetteBinding` before the app initializes
+its binding, plus a CLI or MCP bridge connected to the VM service. With a stock
+Papyrus build, use the existing Dart MCP inspection tools. [Marionette setup](https://marionette.leancode.co/docs/)
+
+When a journey needs repeatable assertions or crosses into a native file picker,
+use Patrol. For Android process death, notification recovery, or random input,
+run the host-driven recovery and Monkey runner on a disposable emulator. Keep
+the seed with any failure. [Papyrus commands and fixtures](../../../client/docs/JOURNEY_TESTING.md)
+
+For a dead-code review after a refactor, run Ciach in report mode. From the
+workspace root, this example scans the client's reader integration:
+
+```sh
+tools/dart run ciach@0.7.2 client/app --include 'lib/reader/**' --dart "$PWD/.fvm/flutter_sdk/bin/dart"
+```
+
+Change the glob to the affected files. Check native callbacks and, for public
+reader APIs, callers in the separate client repository before removing a finding.
+The package scan can only see references in its analysis scope. [Ciach options](https://ciach.leancode.co/docs)
 
 Run focused tests and `tools/papyrus check client`; for platform adapter changes,
 also compile web or the affected available native target. Run the full suite when
