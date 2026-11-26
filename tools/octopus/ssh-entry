@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -eu
+# Install as a forced SSH command. Drop privileges before interpreting any input.
+exec /usr/sbin/runuser -u papyrus-release -- /usr/bin/env -i \
+  HOME=/var/lib/papyrus-release LANG=C.UTF-8 GIT_TERMINAL_PROMPT=0 GH_PROMPT_DISABLED=1 \
+  PATH=/opt/papyrus-release/commands:/opt/papyrus-release/bin:/usr/bin:/bin \
+  PYTHONPATH=/opt/papyrus-release/lib \
+  /usr/bin/python3 /opt/papyrus-release/octopus/entry.py "${SSH_ORIGINAL_COMMAND:-}"

@@ -1,0 +1,74 @@
+name: Release Papyrus with Octopus
+run-name: Papyrus ${{ inputs.bump }} release (${{ inputs.mode }})
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment
+        type: choice
+        options: [minor, patch, major]
+        default: minor
+      number:
+        description: Optional explicit version and Android build (for example 0.7.0+11)
+        type: string
+        required: false
+      mode:
+        description: Preview checks the proposed version and Octopus access
+        type: choice
+        options: [preview, release]
+        default: preview
+
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: papyrus-octopus-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require the workspace release branch
+        run: test "$GITHUB_REF" = refs/heads/master
+      - uses: actions/checkout@v4
+      - name: Calculate the next release number
+        id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          number=$(python3 tools/octopus/number.py "$BUMP" --number "$NUMBER")
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+      - uses: OctopusDeploy/login@b6156b03b4b892ffc8e9c57d098e9fe1866dcdb3
+        with:
+          server: https://papyrus-reader.octopus.app
+          service_account_id: ${{ vars.OCTOPUS_SERVICE_ACCOUNT_ID }}
+      - name: Verify project access and record intent
+        env:
+          NUMBER: ${{ steps.next.outputs.number }}
+        run: |
+          curl --fail --silent --show-error -H "Authorization: Bearer $OCTOPUS_ACCESS_TOKEN" \
+            "$OCTOPUS_URL/api/Spaces-1/projects/Projects-1" | jq -e '.Slug == "papyrus"' >/dev/null
+          echo "Papyrus **$NUMBER** · [Octopus project](https://papyrus-reader.octopus.app/app#/Spaces-1/projects/papyrus)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: OctopusDeploy/create-release-action@8c532ccb330c3964ea8729c35e4e232c46d1f77f
+        if: inputs.mode == 'release'
+        with:
+          project: Papyrus
+          space: Default
+          release_number: ${{ steps.next.outputs.number }}
+          ignore_existing: true
+      - uses: OctopusDeploy/deploy-release-action@18537a27317fbfabc10609a34e8452184da68dd0
+        if: inputs.mode == 'release'
+        id: deploy
+        with:
+          project: Papyrus
+          space: Default
+          environments: Production
+          release_number: ${{ steps.next.outputs.number }}
+      - name: Link deployment
+        if: inputs.mode == 'release'
+        env:
+          TASKS: ${{ steps.deploy.outputs.server_tasks }}
+        run: |
+          jq -r '.[] | "Follow the deployment in [Octopus](https://papyrus-reader.octopus.app/app#/Spaces-1/tasks/\(.serverTaskId // .ServerTaskId))."' <<< "$TASKS" >> "$GITHUB_STEP_SUMMARY"
