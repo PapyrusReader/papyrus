@@ -59,6 +59,18 @@ class PipelineTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     pipeline.snapshot("0.7.0+10")
 
+    def test_server_job_receives_the_approved_manifest_over_ssh(self):
+        request = {"version": "0.7.0", "revision": "a" * 40, "manifest": "b" * 40,
+                   "image": "ghcr.io/papyrusreader/server@sha256:" + "c" * 64}
+        with patch.object(pipeline.subprocess, "run") as ssh:
+            ssh.return_value.returncode = 0
+            pipeline.invoke_server_job({"ssh_host": "fixture"}, request)
+            self.assertEqual(ssh.call_args.args[0][-3:], ["--", "fixture", "/usr/local/bin/papyrus-release-server"])
+            self.assertEqual(json.loads(ssh.call_args.kwargs["input"]), request)
+            ssh.return_value.returncode = 1
+            with self.assertRaises(pipeline.DeploymentError):
+                pipeline.invoke_server_job({"ssh_host": "fixture"}, request)
+
     def test_play_retry_uses_original_run_and_never_rebuilds_or_dispatches_twice(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(pipeline.time, "sleep"):
             directory = Path(tmp)
