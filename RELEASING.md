@@ -92,7 +92,12 @@ SMTP sender and alert recipient. Dry runs suppress alerts.
 
 `--merge` authorizes eligible merges for that invocation. Without it the
 runner stops when a PR is ready to merge. GitHub review requirements still
-apply. A cancelled or timed-out release workflow is retried once for the same
+apply. While a component version-preparation PR is open, the merging runner
+can bring it up to date with PRs merged into `development`. It verifies the
+merged PRs, unchanged component version, and clean Git merge result, then waits
+for checks and applicable reviews on the updated commit. It recognizes the
+same branch update after a restart. Direct pushes, rewritten history,
+conflicts, and independent edits to the preparation branch require inspection. A cancelled or timed-out release workflow is retried once for the same
 commit. A failed publication workflow is reported with the linked run.
 
 `--repair` uses an authenticated local `codex` CLI for a failed PR check or a

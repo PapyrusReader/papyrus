@@ -642,6 +642,79 @@ class ReleaseManagerTest(unittest.TestCase):
         self.manager.accept_head(plan, "website")
         self.assertEqual(self.status(plan)["website"]["action"], "merge")
 
+    def test_runner_follows_merged_development_pr_and_recovers_after_push(self):
+        plan = self.plan()
+        self.advance(plan, prepare_only=True)
+        branch = self.manager.branch(plan)
+        saved = copy.deepcopy(plan)
+        self.add_commit("client", "development", "chart.txt", "fixed")
+        base = git(self.remotes["client"], "rev-parse", "development")
+        self.github.releases[f"repos/test/client/commits/{base}/pulls"] = [{
+            "merged_at": "today", "merge_commit_sha": base,
+            "base": {"ref": "development", "repo": {"full_name": "test/client"}},
+        }]
+        for pr in self.github.pulls.values():
+            pr["test_gate"] = ("ci_pending", "CI running")
+
+        runner, _ = self.runner(plan)
+        self.assertEqual(runner.tick()[2].state, "progress")
+        head = git(self.remotes["client"], "rev-parse", branch)
+        self.assertEqual(git(self.remotes["client"], "show", "-s", "--format=%P", head),
+                         f"{saved['components']['client']['prepared_head']} {base}")
+        self.assertEqual(git(self.remotes["client"], "diff", "--name-only", base, head), "app/pubspec.yaml")
+
+        # Simulate a restart after a push, before the new pair of SHAs was persisted.
+        self.manager.save(saved)
+        self.assertEqual(runner.tick()[2].state, "progress")
+        self.assertEqual(runner.tick()[2].state, "waiting")
+        component = self.manager.load(plan["id"])["components"]["client"]
+        self.assertEqual((component["accepted_development"], component["prepared_head"]), (base, head))
+        self.assertEqual(git(self.remotes["client"], "rev-parse", branch), head)
+
+    def test_runner_preserves_unexpected_development_and_preparation_changes(self):
+        plan = self.plan("website")
+        self.advance(plan, prepare_only=True)
+        saved = copy.deepcopy(plan)
+        self.add_commit("website", "development", "direct.txt", "direct push")
+        runner, _ = self.runner(plan)
+        with patch.object(self.github, "api", return_value=[]):
+            self.assertEqual(runner.tick()[2].state, "blocked")
+        self.assertEqual(self.manager.load(plan["id"]), saved)
+
+        self.manager.accept_head(plan, "website")
+        self.add_commit("website", self.manager.branch(plan), "unexpected.txt", "new scope")
+        self.assertEqual(runner.tick()[2].state, "blocked")
+        # Explicit acceptance can inspect a PR commit created outside this checkout.
+        self.manager.accept_head(plan, "website")
+        self.assertEqual(plan["components"]["website"]["prepared_head"],
+                         git(self.remotes["website"], "rev-parse", self.manager.branch(plan)))
+
+    def test_updated_preparation_with_expected_parents_but_extra_content_stays_blocked(self):
+        plan = self.plan("website")
+        self.advance(plan, prepare_only=True)
+        branch = self.manager.branch(plan)
+        component = plan["components"]["website"]
+        previous = component["prepared_head"]
+        self.add_commit("website", "development", "feature.txt", "integrated")
+        self.status(plan)
+        self.manager.accept_head(plan, "website")
+        base = component["accepted_development"]
+
+        with tempfile.TemporaryDirectory() as directory:
+            clone = Path(directory) / "clone"
+            git(self.root, "clone", "--quiet", self.remotes["website"], clone)
+            self.identity(clone)
+            git(clone, "checkout", "--quiet", branch)
+            git(clone, "merge", "--no-ff", "--no-commit", base)
+            (clone / "extra.txt").write_text("outside the base update")
+            git(clone, "add", "extra.txt")
+            git(clone, "commit", "--quiet", "-m", "Update branch")
+            git(clone, "push", "--quiet", "origin", branch)
+
+        runner, _ = self.runner(plan)
+        self.assertEqual(runner.tick()[2].state, "blocked")
+        self.assertEqual(self.manager.load(plan["id"])["components"]["website"]["prepared_head"], previous)
+
     def test_changed_preparation_head_blocks_merge(self):
         plan = self.plan("website")
         self.advance(plan, prepare_only=True)
