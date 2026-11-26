@@ -37,11 +37,11 @@ because they define published Sphinx URLs and requirement source paths.
 
 `development` is the default integration branch in the workspace and component
 repositories. Branch fixes/features from it and target it with ordinary PRs.
-Keep version numbers unchanged while accumulating fixes. `master` is the release
-branch; promote `development` with a release PR when ready, using the existing
-version bump process in `RELEASING.md`. Use a merge commit for promotion and bring
-`master` back into `development` afterwards. Do not rename `master` or deploy from
-`development`. Website versioning remains independent of client/server versions.
+Keep version numbers unchanged while accumulating fixes. For coordinated client/server
+releases, the protected workspace `master` approves the version and component gitlinks
+in one manifest PR. Octopus builds and deploys that reviewed snapshot. Component
+`development` branches continue independently. The website retains independent
+versioning and deployment. See `RELEASING.md` for the release entry point.
 
 ## Tools and checks
 

@@ -6,7 +6,46 @@ independent. Matching versions identify a release; they do not mean an old clien
 must stop working when the server advances. Keep `/v1` backwards compatible and
 deploy additive server changes before distributing a client that needs them.
 
-## Integrate changes
+## Release the client and server with Octopus
+
+In the workspace GitHub Actions tab, select **Release Papyrus with Octopus**, choose
+the `master` branch, and select a major, minor, or patch bump. The default **preview**
+mode reads the current version and checks the Octopus connection. **Release** starts
+the pipeline. From an authenticated GitHub CLI, use `tools/release-octopus minor preview`
+or `tools/release-octopus minor release`. The GitHub run links the Octopus task.
+
+Octopus records the reviewed development tips once, writes version-only commits on
+component release branches, and opens one workspace manifest PR against `master`.
+The PR contains the version, Android build number, client/server gitlinks, and the
+reader revision in the client lockfile. Review the snapshot there. The release
+account merges the approved PR when its required checks pass. Later changes on
+component development branches are picked up by the next release.
+
+The server image and signed client downloads build in parallel in their owning
+GitHub repositories. The server job requires a verified off-host Mac backup and
+restore, deploys by digest, and verifies the running revision and migration heads.
+Only then are the sealed client downloads published. Web and Play internal delivery
+run independently. The separate website release stays independent.
+
+Use **Retry** on the failed Octopus step after fixing the cause. The release host
+stores the GitHub run IDs under `/var/lib/papyrus-release/octopus/<version>+<build>/`.
+Retries follow or rerun the original failed GitHub jobs. Signed client build artifacts
+are retained for 30 days until publication. The existing Mac backup destination must
+be reachable during the server step. The **Verify release connection** runbook checks
+worker, SSH, and GitHub connectivity without creating a release.
+
+The release trigger uses GitHub OIDC restricted to the workspace release workflow on
+`master`. Octopus stores a dedicated SSH credential restricted on Hetzner to the named
+release stages. Signing, Play credentials, and backup credentials stay with their
+existing owners. The Octopus process definition is in `tools/octopus/configure.py`.
+
+## Previous coordinated release runner
+
+The remainder documents the older controller, including recovery of saved releases
+and its independent website commands. Use the Octopus workflow for new coordinated
+client/server releases.
+
+### Integrate changes
 
 `development` is the long-lived default branch in every repository. Ordinary
 feature/fix PRs target it, without version bumps. Integration merges run checks
