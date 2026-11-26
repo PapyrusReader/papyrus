@@ -1,4 +1,5 @@
 {
-  "version": "0.6.0",
-  "android_build_number": 10
+  "version": "0.6.1",
+  "android_build_number": 11,
+  "orchestrator": "octopus"
 }
