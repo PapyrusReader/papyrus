@@ -23,6 +23,8 @@ ORG = "PapyrusReader"
 REPO = f"{ORG}/papyrus"
 SHA = re.compile(r"[0-9a-f]{40}")
 STAGES = ("prepare", "server-build", "client-build", "server-deploy", "publish", "web", "play")
+RUN_IDENTITY_ATTEMPTS = 7
+RUN_IDENTITY_POLL_SECONDS = 5
 
 
 def parse_release(number):
@@ -142,8 +144,9 @@ def prepare(hub, directory, number):
             raise ValueError(reason)
         time.sleep(25)
     revision = pr["mergeCommit"]["oid"]
+    current = fetch(ROOT, "master")
     git(ROOT, "diff", "--quiet", revision, plan["head"], "--", *RELEASE_PATHS)
-    resolve(ROOT, revision, "client", fetch(ROOT, "master"))
+    resolve(ROOT, revision, "client", current)
     save(directory / "manifest.json", revision)
 
 
@@ -153,6 +156,20 @@ def approved(directory, number):
     if tag != f"v{number}":
         raise ValueError("Workspace manifest does not identify this Octopus release")
     return revision
+
+
+def verified_workflow_run(hub, run_url, workflow, title):
+    expected = {"display_title": title, "head_branch": "master", "path": f".github/workflows/{workflow}"}
+    # The dispatch can return a run ID before its full metadata is visible.
+    for attempt in range(RUN_IDENTITY_ATTEMPTS):
+        if attempt:
+            time.sleep(RUN_IDENTITY_POLL_SECONDS)
+        run = hub.api(run_url, missing=True)
+        if run is not None and all(run.get(key) == value for key, value in expected.items()):
+            return run
+
+    actual = {key: run.get(key) for key in expected} if run is not None else None
+    raise ValueError(f"Could not verify GitHub run {run_url}: expected {expected!r}, got {actual!r}")
 
 
 def run_workflow(hub, directory, stage, repo, workflow, title, inputs):
@@ -176,9 +193,7 @@ def run_workflow(hub, directory, stage, repo, workflow, title, inputs):
     print(f"https://github.com/{ORG}/{repo}/actions/runs/{state['id']}", flush=True)
     first = True
     while True:
-        run = hub.data("api", run_url)
-        if run["display_title"] != title or run["head_branch"] != "master" or run["path"] != f".github/workflows/{workflow}":
-            raise ValueError("GitHub run identity differs from the dispatched workflow")
+        run = verified_workflow_run(hub, run_url, workflow, title)
         if run["status"] == "completed":
             if run["conclusion"] == "success":
                 jobs = hub.data("api", f"{run_url}/attempts/{run['run_attempt']}/jobs?per_page=100")
