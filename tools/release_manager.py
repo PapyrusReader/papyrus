@@ -153,7 +153,7 @@ class GitHub:
 
         return json.loads(result.stdout)
 
-    def find_pr(self, repo, head, base, marker, *, allow_unrelated=False):
+    def find_pr(self, repo, head, base, marker, *, allow_unrelated=False, fields=PR_FIELDS):
         candidates = self.data(
             "pr",
             "list",
@@ -168,7 +168,7 @@ class GitHub:
             "--limit",
             "100",
             "--json",
-            PR_FIELDS,
+            fields,
         )
         matches = [pr for pr in candidates if marker in pr["body"]]
 

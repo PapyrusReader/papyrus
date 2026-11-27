@@ -13,7 +13,7 @@ on:
         type: string
         required: false
       mode:
-        description: Preview checks the proposed version and Octopus access
+        description: Preview checks the proposed version, both GitHub Apps and Octopus access
         type: choice
         options: [preview, release]
         default: preview
@@ -71,9 +71,33 @@ jobs:
             exit 1
           fi
 
+  check-apps:
+    needs: select-number
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - role: author
+            environment: release-promotion
+          - role: reviewer
+            environment: release-review
+    environment: ${{ matrix.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the installed App and repository scope
+        env:
+          PAPYRUS_APP_ID: ${{ vars.PAPYRUS_APP_ID }}
+          PAPYRUS_APP_PRIVATE_KEY: ${{ secrets.PAPYRUS_APP_PRIVATE_KEY }}
+          NUMBER: ${{ needs.select-number.outputs.number }}
+          ROLE: ${{ matrix.role }}
+        run: python3 tools/octopus/promotion.py "$NUMBER" --check-app "$ROLE"
+
   promote:
     if: inputs.mode == 'release'
-    needs: [select-number, access]
+    needs: [select-number, access, check-apps]
     runs-on: ubuntu-24.04
     environment: release-promotion
     outputs:
@@ -87,7 +111,8 @@ jobs:
         uses: ./.github/actions/promote
         with:
           number: ${{ needs.select-number.outputs.number }}
-          author: ${{ secrets.PAPYRUS_RELEASE_TOKEN }}
+          app-id: ${{ vars.PAPYRUS_APP_ID }}
+          private-key: ${{ secrets.PAPYRUS_APP_PRIVATE_KEY }}
 
   sync-development:
     needs: [select-number, promote]
@@ -102,7 +127,8 @@ jobs:
         with:
           number: ${{ needs.select-number.outputs.number }}
           manifest: ${{ needs.promote.outputs.manifest }}
-          author: ${{ secrets.PAPYRUS_RELEASE_TOKEN }}
+          app-id: ${{ vars.PAPYRUS_APP_ID }}
+          private-key: ${{ secrets.PAPYRUS_APP_PRIVATE_KEY }}
 
   release:
     permissions:

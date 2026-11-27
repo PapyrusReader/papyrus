@@ -7,8 +7,11 @@ inputs:
   manifest:
     description: Merged workspace SHA for the development sync
     default: ''
-  author:
-    description: Release author credential
+  app-id:
+    description: Release author GitHub App ID
+    required: true
+  private-key:
+    description: Release author GitHub App private key
     required: true
 outputs:
   manifest:
@@ -20,12 +23,11 @@ runs:
     - id: run
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.author }}
+        PAPYRUS_APP_ID: ${{ inputs.app-id }}
+        PAPYRUS_APP_PRIVATE_KEY: ${{ inputs.private-key }}
         NUMBER: ${{ inputs.number }}
         MANIFEST: ${{ inputs.manifest }}
       run: |
-        : "${GH_TOKEN:?Configure PAPYRUS_RELEASE_TOKEN in release-promotion}"
-        gh auth setup-git
         git config --global user.name 'Papyrus Release'
         git config --global user.email 'release@papyrus-reader.com'
         args=("$NUMBER")
