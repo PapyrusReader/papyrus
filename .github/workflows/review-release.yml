@@ -1,0 +1,48 @@
+name: Verify release PR
+run-name: Verify ${{ inputs.repo }} PR ${{ inputs.pr }} for ${{ inputs.number }}
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        type: choice
+        options: [client, server, papyrus]
+        required: true
+      pr:
+        required: true
+      number:
+        required: true
+      head:
+        required: true
+      base:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    environment: release-review
+    steps:
+      - name: Require the trusted workflow and release author
+        env:
+          AUTHOR: ${{ vars.PAPYRUS_RELEASE_AUTHOR }}
+        run: test "$GITHUB_REF" = refs/heads/master && test "$GITHUB_ACTOR" = "$AUTHOR"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reconstruct and review the exact PR head
+        env:
+          PAPYRUS_APP_ID: ${{ vars.PAPYRUS_APP_ID }}
+          PAPYRUS_APP_PRIVATE_KEY: ${{ secrets.PAPYRUS_APP_PRIVATE_KEY }}
+          RELEASE_AUTHOR: ${{ vars.PAPYRUS_RELEASE_AUTHOR }}
+          NUMBER: ${{ inputs.number }}
+          BASE: ${{ inputs.base }}
+          REPO: ${{ inputs.repo }}
+          PR: ${{ inputs.pr }}
+          HEAD_SHA: ${{ inputs.head }}
+        run: |
+          git config --global user.name 'Papyrus Release'
+          git config --global user.email 'release@papyrus-reader.com'
+          python3 tools/octopus/promotion.py "$NUMBER" --base "$BASE" --review "$REPO" "$PR" "$HEAD_SHA"

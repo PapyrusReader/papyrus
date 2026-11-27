@@ -12,7 +12,8 @@ def dispatch(command):
         print(json.dumps({"workspace_master": revision, "stages": list(STAGES)}))
         return
     fields = command.split(" ")
-    if len(fields) != 2 or fields[0] not in STAGES:
+    has_manifest = fields[0] == "prepare" and len(fields) == 3
+    if fields[0] not in STAGES or (len(fields) != 2 and not has_manifest):
         raise ValueError("Expected a Papyrus release stage and version")
     parse_release(fields[1])
     main(*fields)

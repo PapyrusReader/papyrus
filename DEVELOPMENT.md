@@ -46,13 +46,11 @@ from the relevant repository's `origin/development` and open PRs against
 `development`. CI checks PRs and integration pushes; merging a fix does not
 publish a release. Leave version numbers unchanged until release preparation.
 
-`master` contains releases. When ready, prepare the existing version bump on
-`development` and open a `development` → `master` release PR. Use **Create a merge
-commit**, then bring `master` back into `development` to keep both histories
-connected. Do not squash or rebase a release promotion. See `RELEASING.md` for
-client/server coordination and the website README for independent website
-releases. Reader and documentation changes use the same branch flow; docs publish
-only from `master`.
+Octopus opens one workspace manifest PR against `master` to approve the client
+and server versions and exact component commits. See [the release guide](RELEASING.md).
+Reader and documentation changes use merge-commit promotions to `master` followed
+by synchronization to `development`. Docs publish from `master`. The website
+has its own version and release workflow.
 
 Submodule `branch` settings follow `development` for intentional remote updates;
 normal clones and CI still use the recorded commit pointers. Updating submodules

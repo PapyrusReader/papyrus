@@ -1,0 +1,35 @@
+name: Promote Papyrus release sources
+description: Promote the selected revisions or sync a merged manifest back to development.
+inputs:
+  number:
+    description: Coordinated release number
+    required: true
+  manifest:
+    description: Merged workspace SHA for the development sync
+    default: ''
+  app-id:
+    description: Release author GitHub App ID
+    required: true
+  private-key:
+    description: Release author GitHub App private key
+    required: true
+outputs:
+  manifest:
+    description: Merged workspace manifest
+    value: ${{ steps.run.outputs.manifest }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        PAPYRUS_APP_ID: ${{ inputs.app-id }}
+        PAPYRUS_APP_PRIVATE_KEY: ${{ inputs.private-key }}
+        NUMBER: ${{ inputs.number }}
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        git config --global user.name 'Papyrus Release'
+        git config --global user.email 'release@papyrus-reader.com'
+        args=("$NUMBER")
+        if [[ -n "$MANIFEST" ]]; then args+=(--sync-manifest "$MANIFEST"); fi
+        python3 tools/octopus/promotion.py "${args[@]}"
