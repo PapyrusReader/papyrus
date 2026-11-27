@@ -68,6 +68,13 @@ and its secret `PAPYRUS_APP_PRIVATE_KEY` to the PEM generated for Actions.
 | `release-promotion` | `papyrus-release-runner` | Contents, pull requests and Actions write. Checks and commit statuses read. |
 | `release-review` | `papyrus-release-reviewer` | Contents read and pull requests write. |
 
+Grant the reviewer **Contents: read and write** on its installation and accept
+the permission change in the organization settings. GitHub counts its approval
+toward the protected branches' required review only when the installed App
+has write access. The reviewer job still requests a contents-read token as
+shown above. Its private key can mint a contents-write token, so keep that key
+in the separate, master-only review environment.
+
 Set `PAPYRUS_RELEASE_AUTHOR` in `release-review` to `papyrus-release-runner[bot]`.
 The runner mints installation tokens restricted to the three repositories and
 refreshes them while waiting for CI. The review job uses its own App identity.
