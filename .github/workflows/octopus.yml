@@ -20,14 +20,15 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 concurrency:
   group: papyrus-octopus-release
   cancel-in-progress: false
 
 jobs:
-  release:
+  select-number:
     runs-on: ubuntu-24.04
+    outputs:
+      number: ${{ steps.next.outputs.number }}
     steps:
       - name: Require the workspace release branch
         run: test "$GITHUB_REF" = refs/heads/master
@@ -40,34 +41,103 @@ jobs:
         run: |
           number=$(python3 tools/octopus/number.py "$BUMP" --number "$NUMBER")
           echo "number=$number" >> "$GITHUB_OUTPUT"
+
+  access:
+    permissions:
+      contents: read
+      id-token: write
+    needs: select-number
+    runs-on: ubuntu-24.04
+    steps:
       - uses: OctopusDeploy/login@b6156b03b4b892ffc8e9c57d098e9fe1866dcdb3
         with:
           server: https://papyrus-reader.octopus.app
           service_account_id: ${{ vars.OCTOPUS_SERVICE_ACCOUNT_ID }}
       - name: Verify project access and record intent
         env:
-          NUMBER: ${{ steps.next.outputs.number }}
+          NUMBER: ${{ needs.select-number.outputs.number }}
         run: |
           curl --fail --silent --show-error -H "Authorization: Bearer $OCTOPUS_ACCESS_TOKEN" \
             "$OCTOPUS_URL/api/Spaces-1/projects/Projects-1" | jq -e '.Slug == "papyrus"' >/dev/null
           echo "Papyrus **$NUMBER** · [Octopus project](https://papyrus-reader.octopus.app/app#/Spaces-1/projects/papyrus)" >> "$GITHUB_STEP_SUMMARY"
-      - uses: OctopusDeploy/create-release-action@8c532ccb330c3964ea8729c35e4e232c46d1f77f
+      - name: Check for a deployment using the current manifest
         if: inputs.mode == 'release'
+        run: |
+          active=$(curl --fail --silent --show-error -H "Authorization: Bearer $OCTOPUS_ACCESS_TOKEN" \
+            "$OCTOPUS_URL/api/Spaces-1/tasks?project=Projects-1&name=Deploy&active=true&take=1" |
+            jq -er 'if .TotalResults == 0 then "none" else .Items[0].Id end')
+          if [[ "$active" != none ]]; then
+            echo "::error::Octopus task $active is still using the current release. Retry when it completes."
+            exit 1
+          fi
+
+  promote:
+    if: inputs.mode == 'release'
+    needs: [select-number, access]
+    runs-on: ubuntu-24.04
+    environment: release-promotion
+    outputs:
+      manifest: ${{ steps.source.outputs.manifest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: source
+        uses: ./.github/actions/promote
+        with:
+          number: ${{ needs.select-number.outputs.number }}
+          author: ${{ secrets.PAPYRUS_RELEASE_TOKEN }}
+
+  sync-development:
+    needs: [select-number, promote]
+    runs-on: ubuntu-24.04
+    environment: release-promotion
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/promote
+        with:
+          number: ${{ needs.select-number.outputs.number }}
+          manifest: ${{ needs.promote.outputs.manifest }}
+          author: ${{ secrets.PAPYRUS_RELEASE_TOKEN }}
+
+  release:
+    permissions:
+      contents: read
+      id-token: write
+    needs: [select-number, promote]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: OctopusDeploy/login@b6156b03b4b892ffc8e9c57d098e9fe1866dcdb3
+        with:
+          server: https://papyrus-reader.octopus.app
+          service_account_id: ${{ vars.OCTOPUS_SERVICE_ACCOUNT_ID }}
+      - uses: OctopusDeploy/create-release-action@8c532ccb330c3964ea8729c35e4e232c46d1f77f
         with:
           project: Papyrus
           space: Default
-          release_number: ${{ steps.next.outputs.number }}
+          release_number: ${{ needs.select-number.outputs.number }}
+          release_notes: ${{ needs.promote.outputs.manifest }}
           ignore_existing: true
+      - name: Verify the manifest on the Octopus release
+        env:
+          NUMBER: ${{ needs.select-number.outputs.number }}
+          MANIFEST: ${{ needs.promote.outputs.manifest }}
+        run: |
+          curl --fail --silent --show-error -H "Authorization: Bearer $OCTOPUS_ACCESS_TOKEN" \
+            "$OCTOPUS_URL/api/Spaces-1/projects/Projects-1/releases/$NUMBER" |
+            jq -e --arg sha "$MANIFEST" --arg number "$NUMBER" '.Version == $number and .ReleaseNotes == $sha' >/dev/null
       - uses: OctopusDeploy/deploy-release-action@18537a27317fbfabc10609a34e8452184da68dd0
-        if: inputs.mode == 'release'
         id: deploy
         with:
           project: Papyrus
           space: Default
           environments: Production
-          release_number: ${{ steps.next.outputs.number }}
+          release_number: ${{ needs.select-number.outputs.number }}
       - name: Link deployment
-        if: inputs.mode == 'release'
         env:
           TASKS: ${{ steps.deploy.outputs.server_tasks }}
         run: |

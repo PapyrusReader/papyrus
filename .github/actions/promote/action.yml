@@ -1,0 +1,33 @@
+name: Promote Papyrus release sources
+description: Promote the selected revisions or sync a merged manifest back to development.
+inputs:
+  number:
+    description: Coordinated release number
+    required: true
+  manifest:
+    description: Merged workspace SHA for the development sync
+    default: ''
+  author:
+    description: Release author credential
+    required: true
+outputs:
+  manifest:
+    description: Merged workspace manifest
+    value: ${{ steps.run.outputs.manifest }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.author }}
+        NUMBER: ${{ inputs.number }}
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        : "${GH_TOKEN:?Configure PAPYRUS_RELEASE_TOKEN in release-promotion}"
+        gh auth setup-git
+        git config --global user.name 'Papyrus Release'
+        git config --global user.email 'release@papyrus-reader.com'
+        args=("$NUMBER")
+        if [[ -n "$MANIFEST" ]]; then args+=(--sync-manifest "$MANIFEST"); fi
+        python3 tools/octopus/promotion.py "${args[@]}"

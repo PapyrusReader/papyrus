@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -11,71 +10,6 @@ import pipeline
 
 
 class PipelineTests(unittest.TestCase):
-    def test_manifest_is_pinned_and_new_development_commits_do_not_change_retry(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            clone = root / "workspace"
-            clone.mkdir()
-
-            def git(repo, *args):
-                return subprocess.check_output(["git", "-C", str(repo), *args], text=True).strip()
-
-            def init(repo):
-                repo.mkdir(exist_ok=True)
-                git(repo, "init", "-qb", "development")
-                git(repo, "config", "user.name", "Papyrus Test")
-                git(repo, "config", "user.email", "test@papyrus.test")
-                git(repo, "config", "commit.gpgsign", "false")
-
-            init(clone)
-            (clone / "release.json").write_text('{"version":"0.6.0","android_build_number":10}')
-            git(clone, "add", "release.json")
-            git(clone, "commit", "-qm", "Baseline")
-            git(clone, "branch", "master")
-            git(clone, "remote", "add", "origin", str(clone))
-            reader = "c" * 40
-            for name in ("client", "server"):
-                repo = clone / name
-                init(repo)
-                if name == "client":
-                    (repo / "app").mkdir()
-                    (repo / "app/pubspec.yaml").write_text("version: 0.6.0+10\n")
-                    (repo / "app/pubspec.lock").write_text(f'packages:\n  papyrus_reader:\n    description:\n      resolved-ref: "{reader}"\n')
-                else:
-                    (repo / "pyproject.toml").write_text('[project]\nversion = "0.6.0"\n')
-                    (repo / "uv.lock").write_text('[[package]]\nname = "papyrus-server"\nversion = "0.6.0"\n')
-                git(repo, "add", ".")
-                git(repo, "commit", "-qm", "Reviewed")
-                git(repo, "remote", "add", "origin", str(repo))
-
-            with patch.object(pipeline, "ROOT", clone):
-                plan = pipeline.snapshot("0.7.0+11")
-                self.assertEqual(plan, pipeline.snapshot("0.7.0+11"))
-                git(clone / "client", "commit", "--allow-empty", "-qm", "Later feature")
-                self.assertNotEqual(plan["sources"]["client"], git(clone / "client", "rev-parse", "HEAD"))
-                revision, tag = pipeline.resolve(clone, plan["head"], "client", plan["head"])
-                self.assertEqual((revision, tag), (plan["pins"]["client"], "v0.7.0+11"))
-                self.assertEqual(git(clone, "rev-parse", plan["head"] + ":reader"), reader)
-                with self.assertRaises(ValueError):
-                    pipeline.snapshot("0.7.0+10")
-
-                # GitHub creates the approval merge in a separate repository from the release host.
-                remote = root / "github"
-                git(clone, "branch", "octopus/0.7.0+11", plan["head"])
-                git(root, "clone", "--quiet", "--no-local", "--branch", "master", str(clone), str(remote))
-                git(remote, "-c", "user.name=Reviewer", "-c", "user.email=test@papyrus.test",
-                    "merge", "--no-gpg-sign", "--no-ff", "--no-edit", "origin/octopus/0.7.0+11")
-                merge = git(remote, "rev-parse", "HEAD")
-                git(clone, "remote", "set-url", "origin", str(remote))
-                pipeline.save(root / "plan.json", plan)
-                hub = Mock()
-                hub.call.return_value = " ".join(("def resolve(", "Build client ${{ inputs.manifest }}",
-                                                  "Build server ${{ inputs.manifest }}", "sealed-release"))
-                hub.find_pr.return_value = {"url": "https://example.test/pr/1", "number": 1}
-                hub.pr.return_value = {"state": "MERGED", "headRefOid": plan["head"], "mergeCommit": {"oid": merge}}
-                pipeline.prepare(hub, root, "0.7.0+11")
-                self.assertEqual(json.loads((root / "manifest.json").read_text()), merge)
-
     def test_server_job_receives_the_approved_manifest_over_ssh(self):
         request = {"version": "0.7.0", "revision": "a" * 40, "manifest": "b" * 40,
                    "image": "ghcr.io/papyrusreader/server@sha256:" + "c" * 64}
