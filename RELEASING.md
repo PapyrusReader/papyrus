@@ -8,21 +8,31 @@ deploy additive server changes before distributing a client that needs them.
 
 ## Release the client and server with Octopus
 
-1. Merge the client and server changes you want to ship into their respective
-   `development` branches. Octopus captures those commits when release preparation starts.
-2. Open [Release Papyrus with Octopus](https://github.com/PapyrusReader/papyrus/actions/workflows/octopus.yml)
-   in GitHub and select **Run workflow**. Choose **master**, select the version
-   increment, and leave the explicit number empty for a calculated version and build.
-3. Select **release** and click **Run workflow**. The default **preview** mode
-   only calculates the version and checks Octopus access. From the CLI,
-   `tools/release-octopus minor release` starts the same workflow.
-4. Review the bot's **Release Papyrus** PR in the workspace. Check the version,
-   Android build number, and pinned client, server and reader revisions. Under
-   **Files changed → Review changes**, choose **Approve** and submit the review.
-   The release account merges it after required checks pass.
-5. Open the workflow run's **Summary** and follow the Octopus task link. The
-   GitHub launcher finishes after dispatch. The Octopus task reports the outcome
-   of production deployment and delivery.
+Use **Run workflow** on workspace `master`, choose the version increment and
+select **release**. The CLI equivalent is `tools/release-octopus minor release`.
+The default **preview** calculates the number and checks Octopus access.
+[Release Papyrus with Octopus](https://github.com/PapyrusReader/papyrus/actions/workflows/octopus.yml)
+
+1. GitHub merges outstanding component `master` changes into `development` through
+   sync PRs when needed. It then reads each remote development tip and records
+   both SHAs in the workspace `release-inputs/<version>+<build>` ref for retries.
+2. It creates `release/<version>+<build>` at each selected component revision
+   with the version edits, runs the normal PR checks and merges into component
+   `master`. A separate reviewer reconstructs the expected Git commit from the
+   protected history before approving that specific PR head.
+3. The workspace release PR pins both actual merge commits and the reader SHA
+   locked by the promoted client. Once checks and independent verification pass,
+   the release account merges the manifest into workspace `master`.
+4. GitHub sends that merge SHA with the Octopus release. Octopus verifies it
+   against workspace `master`, then starts the builds. A separate GitHub job
+   syncs each promoted commit into its current `development` branch through
+   checked PRs. Follow the production task from the GitHub workflow summary.
+
+If preparation or a sync fails, inspect the linked PR or reviewer run, fix the
+reported problem and rerun the failed GitHub jobs. They reuse the frozen inputs
+and previously merged PRs. A failing sync job can be retried independently of
+delivery. The launcher checks for an active Octopus deployment before preparing a new
+release, since a newer manifest supersedes the previous pins.
 
 The server image and signed client downloads build in parallel in their owning
 GitHub repositories. Before deploying the new image by digest, Hetzner uploads an encrypted backup
@@ -40,10 +50,33 @@ For restore drills and recovery keys, see [production R2 backups](tools/backup/R
 The **Verify release connection** runbook checks the Octopus worker, SSH and GitHub
 connection without creating a release.
 
-The release trigger uses GitHub OIDC restricted to the workspace release workflow on
+The Octopus service account needs project, release and task read access in
+addition to its release creation and deployment permissions. The release trigger uses GitHub OIDC restricted to the workspace release workflow on
 `master`. Octopus stores a dedicated SSH credential restricted on Hetzner to the named
 release stages. Signing, Play credentials, and backup credentials stay with their
 existing owners. The Octopus process definition is in `tools/octopus/configure.py`.
+
+## One-time setup for automatic merges
+
+Use separate GitHub environments in the workspace repository, each restricted
+to the `master` branch. Configure these with dedicated automation accounts
+that have access to `papyrus`, `client` and `server`.
+
+| Environment | Setting | Purpose |
+| --- | --- | --- |
+| `release-promotion` | Secret `PAPYRUS_RELEASE_TOKEN` | Author release refs and PRs, read checks and merge through normal rules. Grant contents and pull requests write, checks and commit statuses read, workflows write for promotions that include workflow files, and workspace Actions write to dispatch the reviewer. |
+| `release-review` | Variable `PAPYRUS_RELEASE_AUTHOR` | Exact GitHub login that creates the release PRs and dispatches their reviews. |
+| `release-review` | Secret `PAPYRUS_REVIEW_TOKEN` | A separate account whose reviews count under the three repositories' rules. Use a fine-grained token with contents read and pull requests write. |
+
+The reviewer workflow runs from workspace `master` and reads PRs as Git objects.
+GitHub enforces branch protection and required checks on the merge request.
+Keep the two credentials in their respective environments.
+
+Land the workflows on workspace `development` and promote them to `master` before
+the first run. Install the matching release host code and update the Octopus
+process with `tools/octopus/configure.py` between deployments. Its prepare step
+reads the workspace SHA from the release notes and records it for retries.
+[Octopus release notes](https://octopus.com/docs/releases/release-notes/)
 
 ## Updating the release host
 

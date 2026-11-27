@@ -12,10 +12,10 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from source import RELEASE_PATHS, resolve
+from source import resolve
 from release import version_tuple
 from release_deployment import DeploymentError, ServerVersionMismatch, migration_heads, published_image, verify_server
-from release_manager import GitHub, git, read_file, version_files
+from release_manager import GitHub, git, read_file
 
 ROOT = Path("/var/lib/papyrus-release/workspace")
 STATE = Path("/var/lib/papyrus-release/octopus")
@@ -52,102 +52,19 @@ def fetch(repo, branch):
     return revision
 
 
-def make_commit(repo, parent, title, files, pins):
-    with tempfile.TemporaryDirectory() as tmp:
-        date = git(repo, "show", "-s", "--format=%cI", parent)
-        env = dict(os.environ, GIT_INDEX_FILE=f"{tmp}/index", GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date)
-        def indexed(*args, data=None):
-            return subprocess.check_output(["git", *args], cwd=repo, env=env, text=True, input=data).strip()
-
-        indexed("read-tree", parent)
-        for path, content in files.items():
-            blob = indexed("hash-object", "-w", "--stdin", data=content)
-            indexed("update-index", "--add", "--cacheinfo", f"100644,{blob},{path}")
-        for name, sha in pins.items():
-            indexed("update-index", "--add", "--cacheinfo", f"160000,{sha},{name}")
-        return indexed("commit-tree", indexed("write-tree"), "-p", parent, "-m", title)
-
-
-def publish_ref(repo, ref, revision):
-    ref = f"refs/heads/{ref}"
-    existing = git(repo, "ls-remote", "--heads", "origin", ref)
-    if existing:
-        if existing.split()[0] != revision:
-            raise ValueError(f"Release branch {ref} already contains a different commit")
-        return
-    git(repo, "push", f"--force-with-lease={ref}:", "origin", f"{revision}:{ref}")
-
-
-def snapshot(number):
-    version, build = parse_release(number)
-    base = fetch(ROOT, "master")
-    previous = json.loads(read_file(ROOT, base, "release.json"))
-    if version_tuple(version) <= version_tuple(previous["version"]) or build <= previous["android_build_number"]:
-        raise ValueError("The release version and Android build must increase from workspace master")
-    integration = {name: fetch(ROOT / name, "development") for name in ("client", "server")}
-    pins = {}
-    for name, parent in integration.items():
-        repo = ROOT / name
-        files = version_files(name, lambda path: read_file(repo, parent, path), version, build)
-        pins[name] = make_commit(repo, parent, f"Version Papyrus {number}", files, {})
-    lock = read_file(ROOT / "client", pins["client"], "app/pubspec.lock")
-    reader_block = re.search(r"(?m)^  papyrus_reader:\n((?:    .*\n)+)", lock)
-    reader = re.search(r'(?m)^      resolved-ref: "?(\w{40})"?$', reader_block[1]) if reader_block else None
-    if not reader or not SHA.fullmatch(reader[1]):
-        raise ValueError("Cannot resolve the client's locked reader revision")
-    pins["reader"] = reader[1]
-    manifest = {"version": version, "android_build_number": build, "orchestrator": "octopus"}
-    head = make_commit(ROOT, base, f"Release Papyrus {number}", {"release.json": json.dumps(manifest, indent=2) + "\n"}, pins)
-    return {"base": base, "head": head, "pins": pins, "sources": integration}
-
-
-def prepare(hub, directory, number):
-    for repo, path, expected in (
-        ("papyrus", "tools/octopus/source.py", "def resolve("),
-        ("client", ".github/workflows/release.yml", "Build client ${{ inputs.manifest }}"),
-        ("client", ".github/workflows/publish.yml", "sealed-release"),
-        ("server", ".github/workflows/release.yml", "Build server ${{ inputs.manifest }}"),
-    ):
-        contents = hub.call("api", "-H", "Accept: application/vnd.github.raw+json",
-                            f"repos/{ORG}/{repo}/contents/{path}?ref=master")
-        if expected not in contents:
-            raise ValueError(f"Install the Octopus release workflow on {repo}/master before starting a release")
-    path = directory / "plan.json"
-    if not path.exists():
-        save(path, snapshot(number))
-    plan = json.loads(path.read_text())
-    branch = f"octopus/{number}"
-    for name in ("client", "server"):
-        publish_ref(ROOT / name, branch, plan["pins"][name])
-    publish_ref(ROOT, branch, plan["head"])
-    marker = f"Papyrus release manifest for {number}"
-    pr = hub.find_pr(REPO, branch, "master", marker)
-    if not pr:
-        body = directory / "pull-request.md"
-        body.write_text(marker + "\n\n" + "\n".join(
-            f"- {name}: https://github.com/{ORG}/{name}/commit/{sha}" for name, sha in plan["pins"].items()
-        ) + "\n\nMerging authorizes Octopus to deploy this exact snapshot to production.\n")
-        print(hub.call("pr", "create", "--repo", REPO, "--base", "master", "--head", branch,
-                       "--title", f"Release Papyrus {number}", "--body-file", str(body)), flush=True)
-        pr = hub.find_pr(REPO, branch, "master", marker)
-    print(f"Waiting for the workspace release approval: {pr['url']}", flush=True)
-    while True:
-        pr = hub.pr(REPO, pr["number"])
-        if pr["headRefOid"] != plan["head"] or pr["state"] == "CLOSED":
-            raise ValueError("The manifest PR changed or was closed")
-        if pr["state"] == "MERGED":
-            break
-        gate, reason = hub.merge_gate(REPO, pr)
-        if gate is None:
-            hub.call("pr", "merge", pr["number"], "--repo", REPO, "--merge", "--match-head-commit", plan["head"])
-        elif gate not in ("ci_pending", "review_pending", "mergeability_pending", "review_threads"):
-            raise ValueError(reason)
-        time.sleep(25)
-    revision = pr["mergeCommit"]["oid"]
-    current = fetch(ROOT, "master")
-    git(ROOT, "diff", "--quiet", revision, plan["head"], "--", *RELEASE_PATHS)
-    resolve(ROOT, revision, "client", current)
-    save(directory / "manifest.json", revision)
+def prepare(directory, number, manifest=None):
+    path = directory / "manifest.json"
+    if path.exists():
+        saved = json.loads(path.read_text())
+        if manifest is not None and manifest != saved:
+            raise ValueError("This release already has a different workspace manifest")
+        manifest = saved
+    if not manifest or not SHA.fullmatch(manifest):
+        raise ValueError("An approved workspace manifest SHA is required")
+    _, tag = resolve(ROOT, manifest, "client", fetch(ROOT, "master"))
+    if tag != f"v{number}":
+        raise ValueError("Workspace manifest does not identify this Octopus release")
+    save(path, manifest)
 
 
 def approved(directory, number):
@@ -257,7 +174,7 @@ def server_deploy(hub, number, manifest):
         verify_server(target, **expected)
 
 
-def main(stage, number):
+def main(stage, number, manifest=None):
     parse_release(number)
     os.umask(0o077)
     directory = STATE / number
@@ -270,7 +187,7 @@ def main(stage, number):
     with (directory / f"{stage}.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if stage == "prepare":
-            prepare(hub, directory, number)
+            prepare(directory, number, manifest)
             return
         manifest = approved(directory, number)
         for prerequisite in dependencies.get(stage, ()):
@@ -295,5 +212,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=STAGES)
     parser.add_argument("release")
+    parser.add_argument("--manifest")
     args = parser.parse_args()
-    main(args.stage, args.release)
+    main(args.stage, args.release, args.manifest)

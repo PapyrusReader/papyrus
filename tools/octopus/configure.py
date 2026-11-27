@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 SERVER = "https://papyrus-reader.octopus.app"
 STEPS = (
-    ("Approve the workspace release manifest", "prepare", False),
+    ("Verify the merged workspace release manifest", "prepare", False),
     ("Build the server image", "server-build", False),
     ("Build and sign client artifacts", "client-build", True),
     ("Verify the off-host backup and deploy the server digest", "server-deploy", False),
@@ -64,6 +64,9 @@ def main():
     process_path = project["Links"]["DeploymentProcess"]
     process = api(key, process_path)
     existing = {step["Name"]: step for step in process["Steps"]}
+    old_prepare = "Approve the workspace release manifest"
+    if old_prepare in existing:
+        existing[STEPS[0][0]] = existing.pop(old_prepare)
     previous_title = "Verify the Mac backup and deploy the server digest"
     backup_title = next(title for title, stage, _ in STEPS if stage == "server-deploy")
     if previous_title in existing and backup_title not in existing:
