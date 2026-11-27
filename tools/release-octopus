@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -eu
+usage() {
+  echo 'Usage: tools/release-octopus [minor|patch|major] [preview|release] [VERSION+BUILD]'
+}
+case ${1:-} in -h|--help) usage; exit 0 ;; esac
+(( $# <= 3 )) || { usage >&2; exit 2; }
 bump=${1:-minor}
 mode=${2:-preview}
-case "$bump" in major|minor|patch) ;; *) echo 'Use major, minor, or patch' >&2; exit 2;; esac
-case "$mode" in preview|release) ;; *) echo 'Use preview or release' >&2; exit 2;; esac
-exec gh workflow run octopus.yml --repo PapyrusReader/papyrus --ref master -f "bump=$bump" -f "mode=$mode"
+case "$bump" in major|minor|patch) ;; *) usage >&2; exit 2 ;; esac
+case "$mode" in preview|release) ;; *) usage >&2; exit 2 ;; esac
+inputs=(-f "bump=$bump" -f "mode=$mode")
+if (( $# == 3 )); then
+  [[ $3 =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[1-9][0-9]*$ ]] || { usage >&2; exit 2; }
+  inputs+=(-f "number=$3")
+fi
+exec gh workflow run octopus.yml --repo PapyrusReader/papyrus --ref master "${inputs[@]}"

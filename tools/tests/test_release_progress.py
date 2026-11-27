@@ -103,6 +103,7 @@ class ProgressTest(unittest.TestCase):
         errors = Terminal()
         manager = Mock()
         manager.lock = contextlib.nullcontext
+        manager.load.return_value = {"id": "website-1.1.7", "components": {"website": {}}}
         manager.advance.side_effect = release_manager.ReleaseError("Connection failed")
 
         with (

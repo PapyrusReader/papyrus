@@ -9,10 +9,10 @@ from urllib.request import Request, urlopen
 
 SERVER = "https://papyrus-reader.octopus.app"
 STEPS = (
-    ("Approve the workspace release manifest", "prepare", False),
+    ("Verify the merged workspace release manifest", "prepare", False),
     ("Build the server image", "server-build", False),
     ("Build and sign client artifacts", "client-build", True),
-    ("Verify the Mac backup and deploy the server digest", "server-deploy", False),
+    ("Verify the off-host backup and deploy the server digest", "server-deploy", False),
     ("Publish signed downloads", "publish", False),
     ("Deliver and verify the web app", "web", False),
     ("Deliver and verify Google Play internal", "play", True),
@@ -33,15 +33,19 @@ def api(key, path, document=None):
 
 def make_step(title, stage, parallel, worker_pool):
     script = Path(__file__).with_name("worker.sh").read_text().replace("STAGE_NAME", stage)
+    properties = {
+        "Octopus.Action.RunOnServer": "true", "Octopus.Action.Script.ScriptSource": "Inline",
+        "Octopus.Action.Script.Syntax": "Bash", "Octopus.Action.Script.ScriptBody": script,
+    }
+    if stage in ("server-build", "client-build"):
+        properties["Octopus.Action.AutoRetry.MaximumCount"] = "3"
+        properties["Octopus.Action.AutoRetry.MinimumBackoff"] = "15"
     return {
         "Name": title, "PackageRequirement": "LetOctopusDecide", "Condition": "Success",
         "StartTrigger": "StartWithPrevious" if parallel else "StartAfterPrevious",
         "Properties": {}, "Actions": [{
             "Name": title, "ActionType": "Octopus.Script", "IsRequired": True, "IsDisabled": False,
-            "WorkerPoolId": worker_pool, "Properties": {
-                "Octopus.Action.RunOnServer": "true", "Octopus.Action.Script.ScriptSource": "Inline",
-                "Octopus.Action.Script.Syntax": "Bash", "Octopus.Action.Script.ScriptBody": script,
-            },
+            "WorkerPoolId": worker_pool, "Properties": properties,
         }],
     }
 
@@ -60,6 +64,13 @@ def main():
     process_path = project["Links"]["DeploymentProcess"]
     process = api(key, process_path)
     existing = {step["Name"]: step for step in process["Steps"]}
+    old_prepare = "Approve the workspace release manifest"
+    if old_prepare in existing:
+        existing[STEPS[0][0]] = existing.pop(old_prepare)
+    previous_title = "Verify the Mac backup and deploy the server digest"
+    backup_title = next(title for title, stage, _ in STEPS if stage == "server-deploy")
+    if previous_title in existing and backup_title not in existing:
+        existing[backup_title] = existing.pop(previous_title)
     if set(existing) - {title for title, _, _ in STEPS}:
         raise ValueError("Existing process has unrelated steps")
     known_host = args.known_hosts_file.read_text().strip()

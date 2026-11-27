@@ -11,6 +11,11 @@ command=$stage
 if [[ "$stage" != probe ]]; then
     [[ "$number" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[1-9][0-9]*$ ]]
     command="$stage $number"
+    if [[ "$stage" == prepare ]]; then
+        manifest=$(get_octopusvariable 'Octopus.Release.Notes')
+        [[ "$manifest" =~ ^[0-9a-f]{40}$ ]]
+        command="$command $manifest"
+    fi
 fi
 ssh -T -i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=15 \
     -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$work/known_hosts" \
