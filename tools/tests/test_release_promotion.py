@@ -15,12 +15,13 @@ class GitHubFixture:
     """Implement PR state and actual Git merges. Only the network boundary is simulated."""
 
     def __init__(self, repos):
+        self.login = "reviewer"
         self.repos = repos
         self.prs = {}
         self.reviews = {}
         self.failed = None
 
-    def find_pr(self, name, head, base, marker):
+    def find_pr(self, name, head, base, marker, **kwargs):
         return next((pr for (repo, _), pr in self.prs.items() if repo == name and pr["headRefName"] == head
                      and pr["baseRefName"] == base and pr["body"] == marker), None)
 

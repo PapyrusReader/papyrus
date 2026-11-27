@@ -10,7 +10,7 @@ deploy additive server changes before distributing a client that needs them.
 
 Use **Run workflow** on workspace `master`, choose the version increment and
 select **release**. The CLI equivalent is `tools/release-octopus minor release`.
-The default **preview** calculates the number and checks Octopus access.
+The default **preview** calculates the number and checks both GitHub App installations and Octopus access.
 [Release Papyrus with Octopus](https://github.com/PapyrusReader/papyrus/actions/workflows/octopus.yml)
 
 1. GitHub merges outstanding component `master` changes into `development` through
@@ -58,15 +58,21 @@ existing owners. The Octopus process definition is in `tools/octopus/configure.p
 
 ## One-time setup for automatic merges
 
-Use separate GitHub environments in the workspace repository, each restricted
-to the `master` branch. Configure these with dedicated automation accounts
-that have access to `papyrus`, `client` and `server`.
+Install the two organization-owned Apps on the workspace, client and server
+repositories. Restrict each workspace Actions environment to the `master`
+branch. Set the environment variable `PAPYRUS_APP_ID` to that App's numeric ID
+and its secret `PAPYRUS_APP_PRIVATE_KEY` to the PEM generated for Actions.
 
-| Environment | Setting | Purpose |
+| Environment | App | Repository permissions requested for each token |
 | --- | --- | --- |
-| `release-promotion` | Secret `PAPYRUS_RELEASE_TOKEN` | Author release refs and PRs, read checks and merge through normal rules. Grant contents and pull requests write, checks and commit statuses read, workflows write for promotions that include workflow files, and workspace Actions write to dispatch the reviewer. |
-| `release-review` | Variable `PAPYRUS_RELEASE_AUTHOR` | Exact GitHub login that creates the release PRs and dispatches their reviews. |
-| `release-review` | Secret `PAPYRUS_REVIEW_TOKEN` | A separate account whose reviews count under the three repositories' rules. Use a fine-grained token with contents read and pull requests write. |
+| `release-promotion` | `papyrus-release-runner` | Contents, pull requests and Actions write. Checks and commit statuses read. |
+| `release-review` | `papyrus-release-reviewer` | Contents read and pull requests write. |
+
+Set `PAPYRUS_RELEASE_AUTHOR` in `release-review` to `papyrus-release-runner[bot]`.
+The runner mints installation tokens restricted to the three repositories and
+refreshes them while waiting for CI. The review job uses its own App identity.
+Generate a separate author key for GitHub Actions so it can be rotated
+independently of the key on Hetzner.
 
 The reviewer workflow runs from workspace `master` and reads PRs as Git objects.
 GitHub enforces branch protection and required checks on the merge request.
