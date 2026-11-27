@@ -25,7 +25,11 @@ class GitHubFixture:
                      and pr["baseRefName"] == base and pr["body"] == marker), None)
 
     def pr(self, repo, number):
-        return self.prs[(repo, number)]
+        pr = self.prs[(repo, number)]
+        if pr["state"] == "OPEN":
+            pr["headRefOid"] = promotion.fetch(self.repos[repo.split("/")[-1]], pr["headRefName"])
+        pr["reviewDecision"] = "APPROVED" if (repo, pr["headRefOid"]) in self.reviews else "REVIEW_REQUIRED"
+        return pr
 
     def merge_gate(self, name, pr):
         if self.failed == (name, pr["baseRefName"]):
@@ -162,6 +166,7 @@ class ReleasePromotionTests(unittest.TestCase):
         repo = self.repos["client"]
         candidate = self.release.version_commit("client", sources["client"])
         altered = promotion.make_commit(repo, candidate, "unplanned", {"extra": "unexpected"}, {})
+        promotion.publish_ref(repo, self.release.branch, altered)
         self.hub.prs[("PapyrusReader/client", 1)] = dict(headRefName=self.release.branch, headRefOid=altered,
                                                         baseRefName="master", body="", state="OPEN")
         with self.assertRaisesRegex(ValueError, "independently reconstructed"):
@@ -175,6 +180,26 @@ class ReleasePromotionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "identify"):
                 pipeline.prepare(self.root, "0.7.1+12", manifest)
             self.assertFalse((self.root / "manifest.json").exists())
+
+    def test_sync_rechecks_a_new_development_tip_before_merging(self):
+        source = self.advance("server", "master", "hotfix")
+        updates = []
+        gate = self.hub.merge_gate
+
+        def merge_gate(name, pr):
+            if not updates:
+                updates.append(self.advance("server", "development", "next-feature"))
+                return "behind", "development advanced during CI"
+            return gate(name, pr)
+
+        self.hub.merge_gate = merge_gate
+        self.release.sync("server", source, "before")
+        repo = self.repos["server"]
+        development = promotion.fetch(repo, "development")
+        self.assertTrue(promotion.ancestor(repo, updates[0], development))
+        self.assertTrue(promotion.ancestor(repo, source, development))
+        self.assertEqual(len(self.hub.prs), 1)
+        self.assertEqual(len(self.hub.reviews), 1)
 
     def test_only_prepare_accepts_a_manifest_argument(self):
         with patch.object(entry, "main") as stage:

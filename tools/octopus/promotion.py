@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pipeline import ORG, REPO, SHA, fetch, parse_release
 from release import version_tuple
-from release_manager import GitHub, git, package_version, read_file, version_files
+from release_manager import GitHub, ReleaseError, git, package_version, read_file, version_files
 from source import resolve
 
 COMPONENTS = ("client", "server")
@@ -113,7 +113,8 @@ class Promotion:
         if not pr:
             raise ValueError(f"Cannot locate release PR in {name}")
         print(pr["url"], flush=True)
-        approved_head = None
+        review_requested = False
+        approval_deadline = 0
         while True:
             pr = self.hub.pr(name, pr["number"])
             if pr["headRefOid"] != head or pr["state"] == "CLOSED":
@@ -138,12 +139,16 @@ class Promotion:
                 if sync:
                     return None
                 raise ValueError(f"{target} changed since source selection: {pr['url']}")
-            if approved_head != head:
+            if not review_requested:
                 self.request_review(name, pr["number"], head)
-                approved_head = head
+                review_requested = True
+                approval_deadline = time.monotonic() + 60
                 continue
-            if gate == "review_pending":
-                raise ValueError(f"GitHub still requires a qualifying approval on {pr['url']}")
+            if pr["reviewDecision"] != "APPROVED" or gate == "review_pending":
+                if time.monotonic() >= approval_deadline:
+                    raise ValueError(f"GitHub has not counted the required approval on {pr['url']}")
+                time.sleep(5)
+                continue
             self.hub.call("pr", "merge", pr["number"], "--repo", name, "--merge", "--match-head-commit", head)
             time.sleep(10)
 
@@ -163,8 +168,13 @@ class Promotion:
                     raise ValueError(f"Unexpected changes to {name}/{branch}")
                 git(repo, "push", f"--force-with-lease=refs/heads/{branch}:{old}", "origin",
                     f"{head}:refs/heads/{branch}")
-            if self.merge_pr(repo, branch, "development", head, f"Sync {name} for {self.number}", sync=True):
-                return
+            try:
+                if self.merge_pr(repo, branch, "development", head, f"Sync {name} for {self.number}", sync=True):
+                    return
+            except (ReleaseError, ValueError):
+                # Development can move while the independent reviewer or merge request is running.
+                if fetch(repo, "development") == base:
+                    raise
 
     def inputs(self, *, existing=False):
         repo = self.workspace
@@ -172,13 +182,16 @@ class Promotion:
         previous = json.loads(read_file(repo, self.base, "release.json"))
         if version_tuple(self.version) <= version_tuple(previous["version"]) or self.build <= previous["android_build_number"]:
             raise ValueError("The version and Android build must both increase")
+        current = fetch(repo, "master")
         saved = ref(repo, branch)
+        if current != self.base:
+            # Rerunning after the manifest merge must only reconstruct this same release.
+            _, tag = resolve(repo, current, "client", current)
+            if not saved or tag != f"v{self.number}":
+                raise ValueError("Workspace master advanced since the release was launched")
         if not saved:
             if existing:
                 raise ValueError("Missing frozen release inputs")
-            current = fetch(repo, "master")
-            if current != self.base:
-                raise ValueError("Workspace master advanced before release preparation")
             for name in COMPONENTS:
                 self.sync(name, fetch(self.clones[name], "master"), "before")
             pins = {name: fetch(self.clones[name], "development") for name in COMPONENTS}
