@@ -33,15 +33,19 @@ def api(key, path, document=None):
 
 def make_step(title, stage, parallel, worker_pool):
     script = Path(__file__).with_name("worker.sh").read_text().replace("STAGE_NAME", stage)
+    properties = {
+        "Octopus.Action.RunOnServer": "true", "Octopus.Action.Script.ScriptSource": "Inline",
+        "Octopus.Action.Script.Syntax": "Bash", "Octopus.Action.Script.ScriptBody": script,
+    }
+    if stage in ("server-build", "client-build"):
+        properties["Octopus.Action.AutoRetry.MaximumCount"] = "3"
+        properties["Octopus.Action.AutoRetry.MinimumBackoff"] = "15"
     return {
         "Name": title, "PackageRequirement": "LetOctopusDecide", "Condition": "Success",
         "StartTrigger": "StartWithPrevious" if parallel else "StartAfterPrevious",
         "Properties": {}, "Actions": [{
             "Name": title, "ActionType": "Octopus.Script", "IsRequired": True, "IsDisabled": False,
-            "WorkerPoolId": worker_pool, "Properties": {
-                "Octopus.Action.RunOnServer": "true", "Octopus.Action.Script.ScriptSource": "Inline",
-                "Octopus.Action.Script.Syntax": "Bash", "Octopus.Action.Script.ScriptBody": script,
-            },
+            "WorkerPoolId": worker_pool, "Properties": properties,
         }],
     }
 

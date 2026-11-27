@@ -31,9 +31,12 @@ After deployment, Octopus checks the live server revision and migration heads.
 Only then are the sealed client downloads published. Web and Play internal delivery
 run independently. The separate website release stays independent.
 
-Use **Retry** on the failed Octopus step after fixing the cause. The release host
-stores the GitHub run IDs under `/var/lib/papyrus-release/octopus/<version>+<build>/`.
-Retries follow or rerun the original failed GitHub jobs. For restore drills and recovery keys, see [production R2 backups](tools/backup/R2_BACKUPS.md).
+The client and server build steps retry automatically with a 15-second backoff.
+If Octopus asks for failure guidance, fix the reported cause and choose **Retry**.
+The release host stores GitHub run IDs under `/var/lib/papyrus-release/octopus/<version>+<build>/`.
+It polls the recorded run for its expected title, branch and workflow path before
+acting on the result. Retries follow the existing run or rerun its failed jobs.
+For restore drills and recovery keys, see [production R2 backups](tools/backup/R2_BACKUPS.md).
 The **Verify release connection** runbook checks the Octopus worker, SSH and GitHub
 connection without creating a release.
 

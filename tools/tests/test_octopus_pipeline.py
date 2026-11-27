@@ -59,6 +59,23 @@ class PipelineTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     pipeline.snapshot("0.7.0+10")
 
+                # GitHub creates the approval merge in a separate repository from the release host.
+                remote = root / "github"
+                git(clone, "branch", "octopus/0.7.0+11", plan["head"])
+                git(root, "clone", "--quiet", "--no-local", "--branch", "master", str(clone), str(remote))
+                git(remote, "-c", "user.name=Reviewer", "-c", "user.email=test@papyrus.test",
+                    "merge", "--no-gpg-sign", "--no-ff", "--no-edit", "origin/octopus/0.7.0+11")
+                merge = git(remote, "rev-parse", "HEAD")
+                git(clone, "remote", "set-url", "origin", str(remote))
+                pipeline.save(root / "plan.json", plan)
+                hub = Mock()
+                hub.call.return_value = " ".join(("def resolve(", "Build client ${{ inputs.manifest }}",
+                                                  "Build server ${{ inputs.manifest }}", "sealed-release"))
+                hub.find_pr.return_value = {"url": "https://example.test/pr/1", "number": 1}
+                hub.pr.return_value = {"state": "MERGED", "headRefOid": plan["head"], "mergeCommit": {"oid": merge}}
+                pipeline.prepare(hub, root, "0.7.0+11")
+                self.assertEqual(json.loads((root / "manifest.json").read_text()), merge)
+
     def test_server_job_receives_the_approved_manifest_over_ssh(self):
         request = {"version": "0.7.0", "revision": "a" * 40, "manifest": "b" * 40,
                    "image": "ghcr.io/papyrusreader/server@sha256:" + "c" * 64}
@@ -79,8 +96,8 @@ class PipelineTests(unittest.TestCase):
             run = {"display_title": title, "head_branch": "master", "path": ".github/workflows/delivery.yml",
                    "status": "completed", "run_attempt": 1, "conclusion": "failure"}
             success = dict(run, run_attempt=2, conclusion="success")
-            hub.data.side_effect = [{"workflow_run_id": 123}, run, run, success,
-                                    {"jobs": [{"name": "play", "conclusion": "success"}]}]
+            hub.data.side_effect = [{"workflow_run_id": 123}, {"jobs": [{"name": "play", "conclusion": "success"}]}]
+            hub.api.side_effect = [None, dict(run, display_title="Delivery"), run, run, success]
             args = hub, directory, "play", "client", "delivery.yml", title, {"tag": "v0.7.0+11", "destination": "play"}
             with self.assertRaisesRegex(ValueError, "retry this Octopus step"):
                 pipeline.run_workflow(*args)
@@ -88,3 +105,28 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(json.loads((directory / "play.json").read_text())["id"], 123)
             hub.call.assert_called_once_with("api", "--method", "POST", "repos/PapyrusReader/client/actions/runs/123/rerun-failed-jobs")
             self.assertEqual(sum("dispatches" in str(call) for call in hub.data.call_args_list), 1)
+            for poll in hub.api.call_args_list:
+                self.assertEqual(poll.args, ("repos/PapyrusReader/client/actions/runs/123",))
+                self.assertEqual(poll.kwargs, {"missing": True})
+
+    def test_persistent_identity_mismatch_keeps_recorded_run_for_inspection(self):
+        title = "Publish manifest"
+        run = {"display_title": title, "head_branch": "master", "path": ".github/workflows/publish.yml",
+               "status": "completed", "conclusion": "success", "run_attempt": 1}
+        for field, wrong in (("display_title", "Publish another manifest"), ("head_branch", "development"),
+                             ("path", ".github/workflows/delivery.yml")):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp, patch.object(pipeline.time, "sleep") as sleep:
+                directory = Path(tmp)
+                pipeline.save(directory / "publish.json", {"id": 123})
+                hub = Mock()
+                hub.api.return_value = {**run, field: wrong}
+                with self.assertRaises(ValueError) as error:
+                    pipeline.run_workflow(hub, directory, "publish", "client", "publish.yml", title, {})
+                self.assertIn("runs/123", str(error.exception))
+                self.assertIn(wrong, str(error.exception))
+                self.assertIn(run[field], str(error.exception))
+                self.assertEqual(hub.api.call_count, pipeline.RUN_IDENTITY_ATTEMPTS)
+                self.assertEqual(sleep.call_count, pipeline.RUN_IDENTITY_ATTEMPTS - 1)
+                hub.data.assert_not_called()
+                hub.call.assert_not_called()
+                self.assertEqual(json.loads((directory / "publish.json").read_text()), {"id": 123})
