@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from pipeline import ORG, REPO, SHA, fetch, parse_release
+from app_auth import AppGitHub
 from release import version_tuple
 from release_manager import GitHub, ReleaseError, git, package_version, read_file, version_files
 from source import resolve
@@ -72,14 +73,14 @@ def sync_commit(repo, base, source):
 
 
 class Promotion:
-    def __init__(self, workspace, clones, number, base):
+    def __init__(self, workspace, clones, number, base, hub=None):
         self.workspace = workspace
         self.clones = clones
         self.number = number
         self.base = base
         self.branch = f"release/{number}"
         self.version, self.build = parse_release(number)
-        self.hub = GitHub(workspace)
+        self.hub = hub or GitHub(workspace)
 
     def request_review(self, name, number, head):
         workflow = "review-release.yml"
@@ -273,7 +274,8 @@ class Promotion:
                 pins = {}
                 for component, parent in sources.items():
                     owner = f"{ORG}/{component}"
-                    merged = self.hub.find_pr(owner, branch, "master", f"Papyrus {self.number} · {branch} into master")
+                    merged = self.hub.find_pr(owner, branch, "master", f"Papyrus {self.number} · {branch} into master",
+                                              fields="body,state,headRefOid,mergeCommit")
                     candidate = self.version_commit(component, parent)
                     if not merged or merged["state"] != "MERGED" or merged["headRefOid"] != candidate:
                         raise ValueError(f"Missing matching merged {component} release PR")
@@ -288,7 +290,7 @@ class Promotion:
             raise ValueError("Unexpected release PR target or branch")
         if expected != head or not ancestor(repo, base, head):
             raise ValueError("The proposed commit differs from the independently reconstructed release")
-        reviewer = self.hub.call("api", "user", "--jq", ".login")
+        reviewer = self.hub.login
         if reviewer.casefold() == author.casefold():
             raise ValueError("The reviewer must be independent of the PR author")
         reviews = self.hub.data("api", endpoint + "/reviews", "--paginate", "--slurp")
@@ -304,10 +306,19 @@ def main():
     parser.add_argument("number")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--sync-manifest")
+    mode.add_argument("--check-app", choices=("author", "reviewer"))
     mode.add_argument("--review", nargs=3, metavar=("REPO", "PR", "HEAD"))
     parser.add_argument("--base", default=os.environ.get("GITHUB_SHA"))
     args = parser.parse_args()
     workspace = Path.cwd()
+    hub = AppGitHub(workspace, review=bool(args.review) or args.check_app == "reviewer")
+    if args.check_app:
+        repositories = hub.data("api", "installation/repositories", "--jq", "[.repositories[].full_name]")
+        if set(repositories) != {f"{ORG}/{name}" for name in ("papyrus", *COMPONENTS)}:
+            raise ValueError("Installation token must cover exactly the three release repositories")
+        print(f"{hub.login} authenticated for {', '.join(sorted(repositories))}")
+        return
+    hub.call("auth", "setup-git")
     with tempfile.TemporaryDirectory() as tmp:
         clones = {}
         for name in COMPONENTS:
@@ -315,7 +326,7 @@ def main():
             git(workspace, "clone", "--bare", "--filter=blob:none", f"https://github.com/{ORG}/{name}.git", clones[name])
         if not args.base or not SHA.fullmatch(args.base):
             raise ValueError("Expected a full workspace base SHA")
-        release = Promotion(workspace, clones, args.number, args.base)
+        release = Promotion(workspace, clones, args.number, args.base, hub)
         if args.review:
             name, pr, head = args.review
             if name not in (*COMPONENTS, "papyrus") or not pr.isdecimal():

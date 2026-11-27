@@ -34,7 +34,8 @@ jobs:
           persist-credentials: false
       - name: Reconstruct and review the exact PR head
         env:
-          GH_TOKEN: ${{ secrets.PAPYRUS_REVIEW_TOKEN }}
+          PAPYRUS_APP_ID: ${{ vars.PAPYRUS_APP_ID }}
+          PAPYRUS_APP_PRIVATE_KEY: ${{ secrets.PAPYRUS_APP_PRIVATE_KEY }}
           RELEASE_AUTHOR: ${{ vars.PAPYRUS_RELEASE_AUTHOR }}
           NUMBER: ${{ inputs.number }}
           BASE: ${{ inputs.base }}
@@ -42,8 +43,6 @@ jobs:
           PR: ${{ inputs.pr }}
           HEAD_SHA: ${{ inputs.head }}
         run: |
-          : "${GH_TOKEN:?Configure PAPYRUS_REVIEW_TOKEN in release-review}"
-          gh auth setup-git
           git config --global user.name 'Papyrus Release'
           git config --global user.email 'release@papyrus-reader.com'
           python3 tools/octopus/promotion.py "$NUMBER" --base "$BASE" --review "$REPO" "$PR" "$HEAD_SHA"
